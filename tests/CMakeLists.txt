@@ -7,6 +7,7 @@ add_executable(bromath_test
     test_geom.cpp
     test_frustum.cpp
     test_color_curves.cpp
+    test_rng_hash.cpp
 )
 
 target_link_libraries(bromath_test PRIVATE bromath)
