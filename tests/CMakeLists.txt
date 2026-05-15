@@ -9,6 +9,7 @@ add_executable(bromath_test
     test_color_curves.cpp
     test_rng_hash.cpp
     test_smoother_grid.cpp
+    test_umbrella.cpp
 )
 
 target_link_libraries(bromath_test PRIVATE bromath)
