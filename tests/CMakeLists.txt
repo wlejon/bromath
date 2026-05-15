@@ -4,6 +4,7 @@ add_executable(bromath_test
     test_vec.cpp
     test_quat.cpp
     test_mat.cpp
+    test_geom.cpp
 )
 
 target_link_libraries(bromath_test PRIVATE bromath)
