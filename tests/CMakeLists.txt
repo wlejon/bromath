@@ -3,6 +3,7 @@ add_executable(bromath_test
     test_scalar.cpp
     test_vec.cpp
     test_quat.cpp
+    test_mat.cpp
 )
 
 target_link_libraries(bromath_test PRIVATE bromath)
