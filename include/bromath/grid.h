@@ -37,7 +37,7 @@ inline void gridCellOf(const GridFootprint2D& g, Vec2 p, int& col, int& row) {
     row = (int)std::floor(fy);
 }
 
-// Centre point of cell (col, row) in world coordinates.
+// Center point of cell (col, row) in world coordinates.
 inline Vec2 gridCellCenter(const GridFootprint2D& g, int col, int row) {
     return { g.origin.x + (col + 0.5f) * g.cellSize,
              g.origin.y + (row + 0.5f) * g.cellSize };

@@ -2,7 +2,7 @@
 
 // Axis-aligned bounding boxes — 2D (AABB2) and 3D (AABB3). Stored as
 // min/max corners. Empty boxes have min > max along some axis; build
-// new empties with aempty() and merge points/boxes to grow.
+// new empties with aempty2()/aempty3() and merge points/boxes to grow.
 
 #include "bromath/mat.h"
 #include "bromath/scalar.h"

@@ -2,7 +2,7 @@
 
 // Small hash helpers — non-cryptographic, deterministic. FNV-1a for byte
 // sequences, integer mixers for scalar inputs, and positionToCell for
-// spatial hash structures (game grids, broflora's GridFootprint2D).
+// spatial hash structures (game grids, GridFootprint2D).
 
 #include "bromath/vec.h"
 

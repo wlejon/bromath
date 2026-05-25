@@ -28,6 +28,7 @@ brogameagent, DSP in broaudio, mesh operations in bromesh.
 | `hash.h` | FNV-1a, hashU32, hashU64, hashCombine, cellHash, positionToCell |
 | `smoother.h` | One-pole parameter smoother |
 | `grid.h` | GridFootprint2D + 2D/3D index helpers |
+| `spatial_hash.h` | SpatialHash3D (point and sphere indexing, radius and AABB queries) |
 
 ## Conventions
 
@@ -87,6 +88,6 @@ The following intentionally live elsewhere:
 - **Mesh operations** (CSG, remesh, simplify, raycast acceleration) — bromesh
 - **Procedural noise** (Simplex, FBm) — FastNoise2, vendored in bromesh
 - **Steering / AI** (seek/arrive/flee/pursue, intercept solver) — brogameagent
-- **Spatial accel structures** (BVH, SpatialHash3D) — bromesh
+- **Spatial accel structures** (BVH) — bromesh
 
 These may be extracted later if a second consumer materializes.
