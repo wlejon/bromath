@@ -13,6 +13,7 @@
 #include "bromath/aabb.h"
 #include "bromath/plane.h"
 #include "bromath/sphere.h"
+#include "bromath/segment.h"
 #include "bromath/ray.h"
 #include "bromath/frustum.h"
 #include "bromath/color.h"
