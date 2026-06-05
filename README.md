@@ -1,34 +1,38 @@
 # bromath
 
-Shared math primitives for the bro stack (bro, bromesh, brogameagent,
-broaudio, broflora). Header-only, C++20, no third-party dependencies.
+Shared math primitives for the bro stack — used transitively by most
+siblings (bro, bromesh, brogameagent, broaudio, broflora, brotensor,
+brolm, brodiffusion, broimage, brosoundml, brovisionml). Header-only,
+C++20, no third-party dependencies.
 
 ## Scope
 
 Geometric, scalar, and small-data math used across multiple sibling
 libraries. **Not** a home for domain runtimes — NN/tensor math lives in
-brogameagent, DSP in broaudio, mesh operations in bromesh.
+brotensor, DSP in broaudio, mesh operations in bromesh.
 
 | Header | Contents |
 |--------|----------|
-| `scalar.h` | constants (PI, TWO_PI, HALF_PI, DEG2RAD, ...), clamp, saturate, lerp, mix, smoothstep, smootherstep, step, sign, sqr, deg2rad, rad2deg |
+| `scalar.h` | constants (PI, TWO_PI, HALF_PI, INV_PI, INV_TWO_PI, DEG2RAD, RAD2DEG), min, max, clamp, saturate, lerp, mix, invLerp, remap, smoothstep, smoothstep01, smootherstep, step, sign, abs, sqr, nearlyEqual, deg2rad, rad2deg |
 | `angle.h` | wrapAngle, wrapAngle2Pi, angleDelta, angleLerp |
-| `vec.h` | Vec2, Vec3 + free-function ops (vdot, vcross, vlen, vnorm, vlerp, vreflect, vproject, vperpendicular, ...) |
-| `quat.h` | Quat (xyzw) + qmul, qrotate, qaxisAngle, qfromTo, qfromEuler, qtoEuler, qslerp, qnlerp |
-| `mat.h` | Mat4 (column-major) + mmul, minverse, mtranspose, mfromTRS, mdecompose, mlookAt, mperspective, mortho |
-| `transform.h` | Transform { pos, rot, scale } with ttoMat4 / tfromMat4 / tmul composition |
-| `aabb.h` | AABB2, AABB3, contains, intersects, expand, merge, fromPoints, transform (Arvo) |
+| `vec.h` | Vec2, Vec3 + free-function ops (vdot, vcross, vlen, vlen2, vnorm, vnormOr, vdist, vdist2, vlerp, vreflect, vproject, vperpendicular, vmin, vmax) |
+| `quat.h` | Quat (xyzw) + qidentity, qmul, qconjugate, qinverse, qdot, qlen, qlen2, qnorm, qrotate, qaxisAngle, qfromTo, qfromEuler, qtoEuler, qslerp, qnlerp |
+| `mat.h` | Mat4 (column-major) + midentity, mmul, minverse, mtranspose, mtranslate, mscale, mfromQuat, mfromTRS, mdecompose, mtransformPoint, mtransformDir, mlookAt, mperspective, mortho |
+| `transform.h` | Transform { pos, rot, scale } with tidentity, ttoMat4, tfromMat4, tmul, ttransformPoint, ttransformDir |
+| `aabb.h` | AABB2, AABB3 + acontains, aintersects, aexpand, amerge, afromPoints, atransform (Arvo), acenter, aextent, ahalfExtent, aisEmpty |
 | `plane.h` | Plane (implicit form), pfromPointNormal, pfromPoints, psignedDistance, pproject |
-| `sphere.h` | Sphere + sintersects + sintersectVolume (lens-volume closed form) |
-| `ray.h` | Ray + ray-vs-AABB (slab), ray-vs-sphere, ray-vs-plane, ray-vs-triangle (Möller-Trumbore) |
-| `frustum.h` | Frustum (six planes from VP matrix via Gribb-Hartmann), point/AABB/sphere culling |
-| `color.h` | Color (linear RGBA float), Color8 (sRGB byte), HSV, hex parser, sRGB↔linear |
-| `curves.h` | CubicEase (CSS-style), cbezier, chermite, ccatmullRom (centripetal) |
-| `rng.h` | SplitMix64 + randFloat01, randSigned, randRange, randInt, randNormal, randInUnitDisc/Sphere, randOnUnitSphere |
-| `hash.h` | FNV-1a, hashU32, hashU64, hashCombine, cellHash, positionToCell |
-| `smoother.h` | One-pole parameter smoother |
-| `grid.h` | GridFootprint2D + 2D/3D index helpers |
+| `sphere.h` | Sphere + scontains, sintersects, sintersectVolume (lens-volume closed form) |
+| `segment.h` | Capsule (segment + radius) + closestSegmentSegment2, segmentSegmentDistance, capsulePenetration, capsulesIntersect (Ericson §5.1.9) |
+| `ray.h` | Ray, RayHit + rat, rIntersectAABB (slab), rIntersectSphere, rIntersectPlane, rIntersectTriangle (Möller-Trumbore) |
+| `frustum.h` | Frustum (six planes from VP matrix via Gribb-Hartmann) + ffromViewProj, fcontains, fintersects (point/AABB/sphere culling) |
+| `color.h` | Color (linear RGBA float), Color8 (sRGB byte), cfromHSV, cfromHex, cfromColor8, ctoColor8, clerp, csrgbToLinear, clinearToSrgb |
+| `curves.h` | ccubicEase (CSS-style), cbezier, cbezierTangent, chermite, ccatmullRom (centripetal) |
+| `rng.h` | splitmix64 + randFloat01, randSigned, randRange, randInt, randNormal, randGaussian2D, randInUnitDisc, randInUnitSphere, randOnUnitSphere |
+| `hash.h` | fnv1a32, hashU32, hashU64, hashCombine, cellHash, positionToCell |
+| `smoother.h` | One-pole parameter smoother (smootherReset, smootherTarget, smootherSetTime, smootherTick, smootherTickN) |
+| `grid.h` | GridFootprint2D + 2D/3D index helpers (gridIndex2D, gridIndex3D, gridCellOf, gridCellCenter, gridInBounds) |
 | `spatial_hash.h` | SpatialHash3D (point and sphere indexing, radius and AABB queries) |
+| `bromath.h` | umbrella header pulling in all of the above |
 
 ## Conventions
 
@@ -41,8 +45,8 @@ brogameagent, DSP in broaudio, mesh operations in bromesh.
 - **Vec2 is XY**. Other conventions (XZ for top-down nav) stay local to
   the consuming library.
 - **Angles are radians** unless explicitly named otherwise.
-- All headers `#include` only `<cmath>`, `<cstdint>`, `<cstddef>`,
-  `<vector>`, `<limits>` from the stdlib.
+- Headers `#include` only `<cmath>`, `<cstdint>`, `<limits>`,
+  `<vector>`, and (spatial_hash only) `<unordered_map>` from the stdlib.
 
 ## Build
 
@@ -83,7 +87,7 @@ using bromath::vdot;
 
 The following intentionally live elsewhere:
 
-- **Tensor / NN math** — brogameagent (`nn/ops.h`, CUDA kernels)
+- **Tensor / NN math** — brotensor (unified Tensor type, CPU/CUDA/Metal ops)
 - **DSP** (biquad, FFT, polyBLEP, resampler) — broaudio
 - **Mesh operations** (CSG, remesh, simplify, raycast acceleration) — bromesh
 - **Procedural noise** (Simplex, FBm) — FastNoise2, vendored in bromesh
