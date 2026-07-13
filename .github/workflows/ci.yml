@@ -37,7 +37,7 @@ jobs:
 
       # Debug, not Release. The tests carry the assertions, and -O0 keeps the
       # numeric helpers (nearlyEqual, the slerp/inverse paths) from being folded
-      # into something the test no longer really exercises.
+      # into something other than what the test means to exercise.
       - name: Configure
         env:
           CC: ${{ matrix.cc }}
