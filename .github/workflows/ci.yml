@@ -33,7 +33,7 @@ jobs:
           - { name: windows-msvc, os: windows-2022 }
           - { name: macos-arm64,  os: macos-14 }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Debug, not Release. The tests carry the assertions, and -O0 keeps the
       # numeric helpers (nearlyEqual, the slerp/inverse paths) from being folded
@@ -63,7 +63,7 @@ jobs:
     name: Coverage
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install gcovr
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends gcovr
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: coverage-html/
