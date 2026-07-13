@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Header-only, so there is no library build for CodeQL to trace — it extracts
+# the headers through the test binary, the only thing that instantiates them.
+#
+# What it is worth looking for here: this is geometry and numerics written
+# against raw POD aggregates. Uninitialised reads, array indices off the end of
+# a Mat4's 16 floats, and the shifts and mixes in rng.h / hash.h (splitmix64,
+# fnv1a32) are the kind of thing a human reviewer skims past and a checker does
+# not. And because every consumer compiles these headers into itself, a defect
+# here is a defect in eleven repos at once.
+jobs:
+  analyze:
+    name: Analyze C++
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended
+
+      - name: Build (tests — the only TUs that instantiate the headers)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --parallel 4
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:c-cpp

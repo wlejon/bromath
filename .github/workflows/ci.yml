@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# bromath is header-only, which shapes this whole file: there is no library to
+# compile, so "does it build" is a question that can only be asked *through* the
+# tests. The test binary is the only translation unit that instantiates any of
+# it, and it is the only thing CI can build.
+#
+# That makes the compiler matrix the point. A header-only library is compiled
+# fresh inside every consumer, under whatever toolchain that consumer uses — and
+# eleven siblings consume this one. A construct that MSVC accepts and GCC
+# rejects is not caught by the author; it is caught by whoever next builds a
+# sibling on the other compiler. So all four toolchains run on every push.
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-gcc,    os: ubuntu-24.04, cc: gcc,   cxx: g++ }
+          - { name: linux-clang,  os: ubuntu-24.04, cc: clang, cxx: clang++ }
+          - { name: windows-msvc, os: windows-2022 }
+          - { name: macos-arm64,  os: macos-14 }
+    steps:
+      - uses: actions/checkout@v5
+
+      # Debug, not Release. The tests carry the assertions, and -O0 keeps the
+      # numeric helpers (nearlyEqual, the slerp/inverse paths) from being folded
+      # into something the test no longer really exercises.
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build --config Debug --parallel 4
+
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
+
+  # ── Coverage ──────────────────────────────────────────────────────────────
+  #
+  # Straightforward here in a way it is not in brotensor: one test binary, no
+  # GPU backend, nothing gated behind hardware. gcov instruments the test TUs,
+  # and because the library *is* headers, the headers get counted where they are
+  # included.
+  #
+  # --filter include/bromath/ so the report measures the library rather than the
+  # tests that drive it.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install gcovr
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends gcovr
+
+      - name: Configure (instrumented)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBROMATH_COVERAGE=ON
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # pipefail: piping gcovr into tee otherwise hands the step tee's exit
+      # status, so a gcovr crash produces no report and the job still goes green.
+      - name: Report
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p coverage-html
+          gcovr --root . \
+            --filter 'include/bromath/' \
+            --exclude-unreachable-branches \
+            --print-summary \
+            --html-details coverage-html/index.html \
+            | tee coverage-summary.txt
+          test -s coverage-html/index.html
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '## Coverage — `include/bromath/`'
+            echo
+            echo 'Header-only: the headers are counted where the test TUs include them.'
+            echo 'The tests themselves are filtered out of the report.'
+            echo
+            echo '```'
+            cat coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage-html/
+          retention-days: 14

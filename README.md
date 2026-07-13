@@ -1,5 +1,9 @@
 # bromath
 
+[![CI](https://github.com/wlejon/bromath/actions/workflows/ci.yml/badge.svg)](https://github.com/wlejon/bromath/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/wlejon/bromath/actions/workflows/codeql.yml/badge.svg)](https://github.com/wlejon/bromath/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Shared math primitives for the bro stack — used transitively by most
 siblings (bro, bromesh, brogameagent, broaudio, broflora, brotensor,
 brolm, brodiffusion, broimage, brosoundml, brovisionml). Header-only,
@@ -53,8 +57,12 @@ brotensor, DSP in broaudio, mesh operations in bromesh.
 ```bash
 cmake -B build
 cmake --build build --config Debug
-./build/tests/Debug/bromath_test.exe
+ctest --test-dir build -C Debug --output-on-failure
 ```
+
+CI builds and runs the tests on Linux (GCC + Clang), Windows (MSVC) and macOS/arm64. The matrix is the point of it: a header-only library is compiled fresh inside every consumer, under whatever toolchain that consumer uses, so a construct one compiler accepts and another rejects has to be caught here rather than in whichever sibling next builds on the other one.
+
+Coverage of `include/bromath/` is reported in each run's job summary (`-DBROMATH_COVERAGE=ON` locally; GCC/Clang only). [CodeQL](.github/workflows/codeql.yml) analyses the headers weekly and on every push.
 
 ## Consuming bromath
 
@@ -95,3 +103,11 @@ The following intentionally live elsewhere:
 - **Spatial accel structures** (BVH) — bromesh
 
 These may be extracted later if a second consumer materializes.
+
+## Versioning
+
+Pre-1.0. Siblings vendor this repo via `add_subdirectory` and compile the headers themselves, so a tag is a pin point for `FetchContent GIT_TAG` rather than a compatibility promise.
+
+## License
+
+[MIT](LICENSE)
