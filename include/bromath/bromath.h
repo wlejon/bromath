@@ -18,6 +18,7 @@
 #include "bromath/frustum.h"
 #include "bromath/color.h"
 #include "bromath/curves.h"
+#include "bromath/easing.h"
 #include "bromath/rng.h"
 #include "bromath/hash.h"
 #include "bromath/smoother.h"
