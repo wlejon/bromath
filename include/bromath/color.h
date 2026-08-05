@@ -7,7 +7,11 @@
 #include "bromath/scalar.h"
 
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstdint>
+#include <string>
+#include <string_view>
 
 namespace bromath {
 
@@ -108,6 +112,69 @@ inline Color cfromHSV(float h, float s, float v, float a = 1.0f) {
     return {
         csrgbToLinear(r + m), csrgbToLinear(g + m), csrgbToLinear(b + m), a
     };
+}
+
+/// Parse a CSS-style color string into RGBA bytes. Supports: #RGB, #RRGGBB, #RRGGBBAA,
+/// and named colors.
+inline bool parseCSSColor(std::string_view str, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) {
+    a = 255;
+    if (str.empty()) return false;
+    if (str[0] == '#') {
+        std::string hexStr(str.substr(1));
+        unsigned long hex = std::strtoul(hexStr.c_str(), nullptr, 16);
+        if (hexStr.size() == 3) { // #RGB
+            r = static_cast<uint8_t>(((hex >> 8) & 0xF) * 17);
+            g = static_cast<uint8_t>(((hex >> 4) & 0xF) * 17);
+            b = static_cast<uint8_t>((hex & 0xF) * 17);
+        } else if (hexStr.size() == 6) { // #RRGGBB
+            r = static_cast<uint8_t>((hex >> 16) & 0xFF);
+            g = static_cast<uint8_t>((hex >> 8) & 0xFF);
+            b = static_cast<uint8_t>(hex & 0xFF);
+        } else if (hexStr.size() == 8) { // #RRGGBBAA
+            r = static_cast<uint8_t>((hex >> 24) & 0xFF);
+            g = static_cast<uint8_t>((hex >> 16) & 0xFF);
+            b = static_cast<uint8_t>((hex >> 8) & 0xFF);
+            a = static_cast<uint8_t>(hex & 0xFF);
+        } else return false;
+        return true;
+    }
+    if (str == "red")     { r=255; g=0;   b=0;   return true; }
+    if (str == "green")   { r=0;   g=128; b=0;   return true; }
+    if (str == "blue")    { r=0;   g=0;   b=255; return true; }
+    if (str == "white")   { r=255; g=255; b=255; return true; }
+    if (str == "black")   { r=0;   g=0;   b=0;   return true; }
+    if (str == "yellow")  { r=255; g=255; b=0;   return true; }
+    if (str == "cyan")    { r=0;   g=255; b=255; return true; }
+    if (str == "magenta") { r=255; g=0;   b=255; return true; }
+    if (str == "gray" || str == "grey") { r=128; g=128; b=128; return true; }
+    if (str == "orange")  { r=255; g=165; b=0;   return true; }
+    if (str == "purple")  { r=128; g=0;   b=128; return true; }
+    if (str == "brown")   { r=165; g=42;  b=42;  return true; }
+    if (str == "pink")    { r=255; g=192; b=203; return true; }
+    return false;
+}
+
+inline bool parseCSSColor(const std::string& str, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) {
+    return parseCSSColor(std::string_view(str), r, g, b, a);
+}
+
+/// Serialize RGBA bytes to hex CSS string "#RRGGBB" or "#RRGGBBAA"
+inline std::string serializeCSSColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
+    char buf[16];
+    if (a == 255) {
+        std::snprintf(buf, sizeof(buf), "#%02X%02X%02X", r, g, b);
+    } else {
+        std::snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", r, g, b, a);
+    }
+    return std::string(buf);
+}
+
+inline std::string serializeCSSColor(Color8 c) {
+    return serializeCSSColor(c.r, c.g, c.b, c.a);
+}
+
+inline std::string serializeCSSColor(Color c) {
+    return serializeCSSColor(ctoColor8(c));
 }
 
 } // namespace bromath
