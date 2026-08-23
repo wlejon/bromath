@@ -11,6 +11,7 @@ add_executable(bromath_test
     test_rng_hash.cpp
     test_smoother_grid.cpp
     test_spatial_hash.cpp
+    test_simd.cpp
     test_umbrella.cpp
 )
 

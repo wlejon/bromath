@@ -24,3 +24,4 @@
 #include "bromath/smoother.h"
 #include "bromath/grid.h"
 #include "bromath/spatial_hash.h"
+#include "bromath/simd.h"

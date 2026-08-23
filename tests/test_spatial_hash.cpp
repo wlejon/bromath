@@ -128,3 +128,54 @@ TEST(spatial_hash_mixed_points_and_spheres) {
     ASSERT(set2.count(30) == 1, "point in AABB matches");
     ASSERT(set2.count(20) == 1, "sphere intrudes into AABB");
 }
+
+TEST(spatial_hash_stress_insert_remove_many) {
+    SpatialHash3D h(0.5f);
+    const int N = 2000;
+    std::mt19937 rng(12345);
+    std::uniform_real_distribution<float> dist(-20.0f, 20.0f);
+    std::uniform_real_distribution<float> rdist(0.1f, 1.5f);
+
+    struct Item {
+        Vec3 p;
+        float r;
+        int32_t id;
+    };
+    std::vector<Item> items;
+    items.reserve(N);
+
+    for (int i = 0; i < N; ++i) {
+        Vec3 p{dist(rng), dist(rng), dist(rng)};
+        float r = (i % 2 == 0) ? 0.0f : rdist(rng);
+        int32_t id = i + 100;
+        items.push_back({p, r, id});
+        if (r > 0.0f) {
+            h.insert(Sphere{p, r}, id);
+        } else {
+            h.insert(p, id);
+        }
+    }
+    ASSERT(h.size() == static_cast<size_t>(N), "all items inserted");
+
+    // Remove half the items
+    for (int i = 0; i < N; i += 2) {
+        h.remove(items[i].id);
+    }
+    ASSERT(h.size() == static_cast<size_t>(N / 2), "half items removed");
+
+    // Verify remaining items are found accurately
+    Vec3 qCenter{0, 0, 0};
+    float qRadius = 10.0f;
+    std::set<int32_t> brute;
+    for (int i = 1; i < N; i += 2) {
+        float reach = qRadius + items[i].r;
+        if (vdist(items[i].p, qCenter) <= reach) {
+            brute.insert(items[i].id);
+        }
+    }
+    std::vector<int32_t> got;
+    h.radiusQuery(qCenter, qRadius, got);
+    std::set<int32_t> gotSet(got.begin(), got.end());
+    ASSERT(brute == gotSet, "post-removal radius query matches ground truth");
+}
+
