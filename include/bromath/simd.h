@@ -17,7 +17,11 @@
 #include <cstring>
 #include <vector>
 
-#if defined(__AVX2__)
+// BROMATH_SIMD_FORCE_SCALAR selects the scalar path on any target (the tests
+// build it to check the paths agree). Every TU of a program must agree on it.
+#if defined(BROMATH_SIMD_FORCE_SCALAR)
+    #define BROMATH_SIMD_SCALAR 1
+#elif defined(__AVX2__)
     #include <immintrin.h>
     #define BROMATH_SIMD_AVX2 1
     #define BROMATH_SIMD_SSE2 1
@@ -157,7 +161,9 @@ inline Simd4f operator/(Simd4f a, Simd4f b) {
 inline Simd4f simdFmadd(Simd4f a, Simd4f b, Simd4f c) {
     // FMA is its own extension: GCC/Clang with -mavx2 but no -mfma reject
     // _mm_fmadd_ps. MSVC defines no __FMA__ but /arch:AVX2 implies FMA3.
-#if defined(BROMATH_SIMD_AVX2) && (defined(__FMA__) || defined(_MSC_VER))
+    // clang-cl defines _MSC_VER but, like clang, needs the fma feature itself.
+#if defined(BROMATH_SIMD_AVX2) && \
+    (defined(__FMA__) || (defined(_MSC_VER) && !defined(__clang__)))
     return Simd4f(_mm_fmadd_ps(a.v, b.v, c.v));
 #elif defined(BROMATH_SIMD_NEON)
     return Simd4f(vmlaq_f32(c.v, a.v, b.v));
@@ -166,25 +172,31 @@ inline Simd4f simdFmadd(Simd4f a, Simd4f b, Simd4f c) {
 #endif
 }
 
+// Per lane `a < b ? a : b` on every path — SSE's minps rule — so a NaN in
+// either operand, or a +0/-0 pair, gives `b` everywhere (NEON's vminq would
+// propagate the NaN; std::min would return `a`).
 inline Simd4f simdMin(Simd4f a, Simd4f b) {
 #if defined(BROMATH_SIMD_SSE2)
     return Simd4f(_mm_min_ps(a.v, b.v));
 #elif defined(BROMATH_SIMD_NEON)
-    return Simd4f(vminq_f32(a.v, b.v));
+    return Simd4f(vbslq_f32(vcltq_f32(a.v, b.v), a.v, b.v));
 #else
-    return Simd4f(std::min(a.data[0], b.data[0]), std::min(a.data[1], b.data[1]),
-                  std::min(a.data[2], b.data[2]), std::min(a.data[3], b.data[3]));
+    auto m = [](float x, float y) { return x < y ? x : y; };
+    return Simd4f(m(a.data[0], b.data[0]), m(a.data[1], b.data[1]),
+                  m(a.data[2], b.data[2]), m(a.data[3], b.data[3]));
 #endif
 }
 
+// Per lane `a > b ? a : b` (SSE's maxps rule), as simdMin.
 inline Simd4f simdMax(Simd4f a, Simd4f b) {
 #if defined(BROMATH_SIMD_SSE2)
     return Simd4f(_mm_max_ps(a.v, b.v));
 #elif defined(BROMATH_SIMD_NEON)
-    return Simd4f(vmaxq_f32(a.v, b.v));
+    return Simd4f(vbslq_f32(vcgtq_f32(a.v, b.v), a.v, b.v));
 #else
-    return Simd4f(std::max(a.data[0], b.data[0]), std::max(a.data[1], b.data[1]),
-                  std::max(a.data[2], b.data[2]), std::max(a.data[3], b.data[3]));
+    auto m = [](float x, float y) { return x > y ? x : y; };
+    return Simd4f(m(a.data[0], b.data[0]), m(a.data[1], b.data[1]),
+                  m(a.data[2], b.data[2]), m(a.data[3], b.data[3]));
 #endif
 }
 
@@ -199,6 +211,7 @@ inline Simd4f simdSqrt(Simd4f a) {
 #endif
 }
 
+// (a0 + a1) + (a2 + a3) on every path, so the rounding matches.
 inline float simdHadd(Simd4f a) {
 #if defined(BROMATH_SIMD_SSE2)
     __m128 shuf = _mm_shuffle_ps(a.v, a.v, _MM_SHUFFLE(2, 3, 0, 1));
@@ -207,9 +220,9 @@ inline float simdHadd(Simd4f a) {
     sums        = _mm_add_ss(sums, shuf);
     return _mm_cvtss_f32(sums);
 #elif defined(BROMATH_SIMD_NEON)
-    return vaddvq_f32(a.v);
+    return vaddvq_f32(a.v);  // two pairwise FADDPs: (a0+a1) + (a2+a3)
 #else
-    return a.data[0] + a.data[1] + a.data[2] + a.data[3];
+    return (a.data[0] + a.data[1]) + (a.data[2] + a.data[3]);
 #endif
 }
 

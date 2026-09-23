@@ -8,6 +8,16 @@
 
 using namespace bromath;
 
+#if defined(BROMATH_SIMD_FORCE_SCALAR)
+static bool defined_scalar_path() {
+#if defined(BROMATH_SIMD_SCALAR) && !defined(BROMATH_SIMD_SSE2) && !defined(BROMATH_SIMD_NEON)
+    return true;
+#else
+    return false;
+#endif
+}
+#endif
+
 TEST(simd_float4_basic_ops) {
     Simd4f a(1.0f, 2.0f, 3.0f, 4.0f);
     Simd4f b(5.0f, 6.0f, 7.0f, 8.0f);
@@ -106,4 +116,44 @@ TEST(simd_batch_transform_points_and_vectors) {
         ASSERT(nearly(transformedDirs[i].y, pts[i].y), "transformed dir y (no translation)");
         ASSERT(nearly(transformedDirs[i].z, pts[i].z), "transformed dir z (no translation)");
     }
+}
+
+// Every path gives these exact results (the scalar build runs them too).
+TEST(simd_path_parity) {
+#if defined(BROMATH_SIMD_FORCE_SCALAR)
+    ASSERT(defined_scalar_path(), "forced build takes the scalar path");
+#endif
+    const float nan = std::nanf("");
+    Simd4f a(nan, 1.0f, -0.0f, 3.0f);
+    Simd4f b(2.0f, nan, 0.0f, 3.0f);
+    Simd4f mn = simdMin(a, b);
+    Simd4f mx = simdMax(a, b);
+    ASSERT(mn.get(0) == 2.0f && mx.get(0) == 2.0f, "NaN first operand: min/max give b");
+    ASSERT(std::isnan(mn.get(1)) && std::isnan(mx.get(1)), "NaN second operand: min/max give b");
+    ASSERT(mn.get(2) == 0.0f && !std::signbit(mn.get(2)), "min(-0, +0) gives b (+0)");
+    ASSERT(mx.get(2) == 0.0f && !std::signbit(mx.get(2)), "max(-0, +0) gives b (+0)");
+    ASSERT(mn.get(3) == 3.0f && mx.get(3) == 3.0f, "equal lanes");
+
+    // (a0 + a1) + (a2 + a3): 1e8 + 1 rounds to 1e8, so the pairwise sum is 0
+    // where a left-to-right sum would give 1.
+    ASSERT(simdHadd(Simd4f(1e8f, 1.0f, -1e8f, 1.0f)) == 0.0f, "hadd sums pairwise");
+
+    // Batch transforms agree with the scalar Mat4 helpers.
+    Mat4 m = mfromTRS(Vec3{1.5f, -2.0f, 0.25f}, qnorm(Quat{0.3f, -0.2f, 0.5f, 0.8f}),
+                      Vec3{2.0f, 0.5f, 3.0f});
+    std::vector<Vec3> in;
+    for (int i = 0; i < 16; ++i)
+        in.push_back(Vec3{i * 0.37f - 2.0f, i * -1.1f + 3.0f, i * 0.05f});
+    std::vector<Vec3> pts(in.size()), dirs(in.size());
+    batchTransformPoints(m, in.data(), pts.data(), in.size());
+    batchTransformVectors(m, in.data(), dirs.data(), in.size());
+    bool same = true;
+    for (size_t i = 0; i < in.size(); ++i) {
+        Vec3 p = mtransformPoint(m, in[i]);
+        Vec3 d = mtransformDir(m, in[i]);
+        same = same && nearly(p.x, pts[i].x, 1e-4f) && nearly(p.y, pts[i].y, 1e-4f) &&
+               nearly(p.z, pts[i].z, 1e-4f) && nearly(d.x, dirs[i].x, 1e-4f) &&
+               nearly(d.y, dirs[i].y, 1e-4f) && nearly(d.z, dirs[i].z, 1e-4f);
+    }
+    ASSERT(same, "batch transforms match mtransformPoint / mtransformDir");
 }
