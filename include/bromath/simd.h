@@ -172,6 +172,24 @@ inline Simd4f simdFmadd(Simd4f a, Simd4f b, Simd4f c) {
 #endif
 }
 
+#if !defined(BROMATH_SIMD_SSE2) && !defined(BROMATH_SIMD_NEON)
+namespace detail {
+// `c ? x : y` as a bit select. MSVC's optimizer folds a plain float ternary
+// `x < y ? x : y` into minss/maxss with the operands commuted, which returns
+// `x` for a +0/-0 pair and drops the rule below; an integer select it cannot.
+inline float selectLane(bool c, float x, float y) {
+    uint32_t bx, by;
+    std::memcpy(&bx, &x, 4);
+    std::memcpy(&by, &y, 4);
+    const uint32_t mask = 0u - static_cast<uint32_t>(c);
+    const uint32_t r = (bx & mask) | (by & ~mask);
+    float out;
+    std::memcpy(&out, &r, 4);
+    return out;
+}
+} // namespace detail
+#endif
+
 // Per lane `a < b ? a : b` on every path — SSE's minps rule — so a NaN in
 // either operand, or a +0/-0 pair, gives `b` everywhere (NEON's vminq would
 // propagate the NaN; std::min would return `a`).
@@ -181,7 +199,7 @@ inline Simd4f simdMin(Simd4f a, Simd4f b) {
 #elif defined(BROMATH_SIMD_NEON)
     return Simd4f(vbslq_f32(vcltq_f32(a.v, b.v), a.v, b.v));
 #else
-    auto m = [](float x, float y) { return x < y ? x : y; };
+    auto m = [](float x, float y) { return detail::selectLane(x < y, x, y); };
     return Simd4f(m(a.data[0], b.data[0]), m(a.data[1], b.data[1]),
                   m(a.data[2], b.data[2]), m(a.data[3], b.data[3]));
 #endif
@@ -194,7 +212,7 @@ inline Simd4f simdMax(Simd4f a, Simd4f b) {
 #elif defined(BROMATH_SIMD_NEON)
     return Simd4f(vbslq_f32(vcgtq_f32(a.v, b.v), a.v, b.v));
 #else
-    auto m = [](float x, float y) { return x > y ? x : y; };
+    auto m = [](float x, float y) { return detail::selectLane(x > y, x, y); };
     return Simd4f(m(a.data[0], b.data[0]), m(a.data[1], b.data[1]),
                   m(a.data[2], b.data[2]), m(a.data[3], b.data[3]));
 #endif
