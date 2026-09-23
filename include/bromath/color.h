@@ -40,7 +40,8 @@ inline constexpr Color clerp(Color a, Color b, float t) {
     };
 }
 
-// Gamma 2.2 approximation — fast, perceptually close to true sRGB.
+// The exact piecewise sRGB transfer function (IEC 61966-2-1), not a gamma
+// 2.2 approximation.
 inline float csrgbToLinear(float c) {
     if (c <= 0.04045f) return c / 12.92f;
     return std::pow((c + 0.055f) / 1.055f, 2.4f);
@@ -114,48 +115,64 @@ inline Color cfromHSV(float h, float s, float v, float a = 1.0f) {
     };
 }
 
-/// Parse a CSS-style color string into RGBA bytes. Supports: #RGB, #RRGGBB, #RRGGBBAA,
-/// and named colors.
+/// Parse a CSS-style color string into RGBA bytes. Supports #RGB, #RGBA,
+/// #RRGGBB, #RRGGBBAA and a small set of named colors (ASCII
+/// case-insensitive, as in CSS). Returns false, leaving r/g/b untouched, on
+/// anything else, including a non-hex digit after '#'.
 inline bool parseCSSColor(std::string_view str, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) {
-    a = 255;
     if (str.empty()) return false;
     if (str[0] == '#') {
-        std::string hexStr(str.substr(1));
-        unsigned long hex = std::strtoul(hexStr.c_str(), nullptr, 16);
-        if (hexStr.size() == 3) { // #RGB
-            r = static_cast<uint8_t>(((hex >> 8) & 0xF) * 17);
-            g = static_cast<uint8_t>(((hex >> 4) & 0xF) * 17);
-            b = static_cast<uint8_t>((hex & 0xF) * 17);
-        } else if (hexStr.size() == 6) { // #RRGGBB
-            r = static_cast<uint8_t>((hex >> 16) & 0xFF);
-            g = static_cast<uint8_t>((hex >> 8) & 0xFF);
-            b = static_cast<uint8_t>(hex & 0xFF);
-        } else if (hexStr.size() == 8) { // #RRGGBBAA
-            r = static_cast<uint8_t>((hex >> 24) & 0xFF);
-            g = static_cast<uint8_t>((hex >> 16) & 0xFF);
-            b = static_cast<uint8_t>((hex >> 8) & 0xFF);
-            a = static_cast<uint8_t>(hex & 0xFF);
-        } else return false;
+        const std::string_view hex = str.substr(1);
+        const size_t n = hex.size();
+        if (n != 3 && n != 4 && n != 6 && n != 8) return false;
+        uint8_t d[8] = {};
+        for (size_t i = 0; i < n; ++i) {
+            const char c = hex[i];
+            if (c >= '0' && c <= '9') d[i] = static_cast<uint8_t>(c - '0');
+            else if (c >= 'a' && c <= 'f') d[i] = static_cast<uint8_t>(10 + c - 'a');
+            else if (c >= 'A' && c <= 'F') d[i] = static_cast<uint8_t>(10 + c - 'A');
+            else return false;
+        }
+        if (n <= 4) { // #RGB / #RGBA: each digit doubled
+            r = static_cast<uint8_t>(d[0] * 17);
+            g = static_cast<uint8_t>(d[1] * 17);
+            b = static_cast<uint8_t>(d[2] * 17);
+            a = n == 4 ? static_cast<uint8_t>(d[3] * 17) : uint8_t(255);
+        } else {      // #RRGGBB / #RRGGBBAA
+            r = static_cast<uint8_t>(d[0] * 16 + d[1]);
+            g = static_cast<uint8_t>(d[2] * 16 + d[3]);
+            b = static_cast<uint8_t>(d[4] * 16 + d[5]);
+            a = n == 8 ? static_cast<uint8_t>(d[6] * 16 + d[7]) : uint8_t(255);
+        }
         return true;
     }
-    if (str == "red")     { r=255; g=0;   b=0;   return true; }
-    if (str == "green")   { r=0;   g=128; b=0;   return true; }
-    if (str == "blue")    { r=0;   g=0;   b=255; return true; }
-    if (str == "white")   { r=255; g=255; b=255; return true; }
-    if (str == "black")   { r=0;   g=0;   b=0;   return true; }
-    if (str == "yellow")  { r=255; g=255; b=0;   return true; }
-    if (str == "cyan")    { r=0;   g=255; b=255; return true; }
-    if (str == "magenta") { r=255; g=0;   b=255; return true; }
-    if (str == "gray" || str == "grey") { r=128; g=128; b=128; return true; }
-    if (str == "orange")  { r=255; g=165; b=0;   return true; }
-    if (str == "purple")  { r=128; g=0;   b=128; return true; }
-    if (str == "brown")   { r=165; g=42;  b=42;  return true; }
-    if (str == "pink")    { r=255; g=192; b=203; return true; }
+    struct Named { const char* name; uint8_t r, g, b; };
+    static constexpr Named kNamed[] = {
+        {"red", 255, 0, 0},     {"green", 0, 128, 0},     {"blue", 0, 0, 255},
+        {"white", 255, 255, 255}, {"black", 0, 0, 0},     {"yellow", 255, 255, 0},
+        {"cyan", 0, 255, 255},  {"magenta", 255, 0, 255}, {"gray", 128, 128, 128},
+        {"grey", 128, 128, 128}, {"orange", 255, 165, 0}, {"purple", 128, 0, 128},
+        {"brown", 165, 42, 42}, {"pink", 255, 192, 203},
+    };
+    auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+    for (const Named& e : kNamed) {
+        const std::string_view name(e.name);
+        if (name.size() != str.size()) continue;
+        bool same = true;
+        for (size_t i = 0; i < name.size() && same; ++i) same = lower(str[i]) == name[i];
+        if (same) { r = e.r; g = e.g; b = e.b; a = 255; return true; }
+    }
     return false;
 }
 
 inline bool parseCSSColor(const std::string& str, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) {
     return parseCSSColor(std::string_view(str), r, g, b, a);
+}
+
+// A string literal converts equally well to std::string and string_view, so
+// without this overload `parseCSSColor("red", ...)` is ambiguous.
+inline bool parseCSSColor(const char* str, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) {
+    return str && parseCSSColor(std::string_view(str), r, g, b, a);
 }
 
 /// Serialize RGBA bytes to hex CSS string "#RRGGBB" or "#RRGGBBAA"

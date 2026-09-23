@@ -41,6 +41,29 @@ TEST(color_hsv) {
     ASSERT(nearly(blue.b, 1.0f, 1e-3f), "HSV blue");
 }
 
+TEST(color_parse_css) {
+    uint8_t r = 1, g = 2, b = 3, a = 4;
+    // A literal must resolve (it is ambiguous between string/string_view
+    // without the const char* overload).
+    ASSERT(parseCSSColor("#fa0", r, g, b, a) && r == 255 && g == 170 && b == 0 && a == 255, "#RGB");
+    ASSERT(parseCSSColor("#fa08", r, g, b, a) && r == 255 && g == 170 && b == 0 && a == 136, "#RGBA");
+    ASSERT(parseCSSColor("#1A2b3C", r, g, b, a) && r == 0x1A && g == 0x2B && b == 0x3C && a == 255, "#RRGGBB");
+    ASSERT(parseCSSColor(std::string("#11223380"), r, g, b, a) && r == 0x11 && b == 0x33 && a == 0x80, "#RRGGBBAA");
+    ASSERT(parseCSSColor(std::string_view("Orange"), r, g, b, a) && r == 255 && g == 165 && b == 0, "names are case-insensitive");
+
+    r = 7; g = 8; b = 9;
+    ASSERT(!parseCSSColor("#GG0000", r, g, b, a), "non-hex digits are rejected, not read as 0");
+    ASSERT(!parseCSSColor("#12345", r, g, b, a), "5 digits");
+    ASSERT(!parseCSSColor("#", r, g, b, a), "bare #");
+    ASSERT(!parseCSSColor("", r, g, b, a), "empty");
+    ASSERT(!parseCSSColor("notacolor", r, g, b, a), "unknown name");
+    ASSERT(!parseCSSColor(static_cast<const char*>(nullptr), r, g, b, a), "null");
+    ASSERT(r == 7 && g == 8 && b == 9, "a failed parse leaves the channels alone");
+
+    ASSERT(serializeCSSColor(0x1A, 0x2B, 0x3C) == "#1A2B3C", "serialize opaque");
+    ASSERT(serializeCSSColor(Color8{1, 2, 3, 4}) == "#01020304", "serialize with alpha");
+}
+
 TEST(curve_cubicEase) {
     CubicEase ease{0.25f, 0.1f, 0.25f, 1.0f}; // CSS "ease"
     ASSERT(ccubicEase(ease, 0.0f) == 0.0f, "ease(0) = 0");
