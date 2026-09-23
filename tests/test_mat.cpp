@@ -2,6 +2,8 @@
 #include "bromath/mat.h"
 #include "bromath/transform.h"
 
+#include <cmath>
+
 using namespace bromath;
 
 TEST(mat_identity) {
@@ -53,6 +55,53 @@ TEST(mat_inverse) {
         float expected = (row == col) ? 1.0f : 0.0f;
         ASSERT(nearly(id.data[i], expected, 1e-4f), "m * m^-1 = I");
     }
+}
+
+TEST(mat_inverse_scale_relative) {
+    // A well-conditioned matrix at a tiny scale: det = 1e-24, far under the
+    // old fixed 1e-20 cutoff, but the matrix is invertible.
+    const float scales[] = {1e-6f, 1e-3f, 1.0f, 1e3f, 1e6f};
+    for (float k : scales) {
+        Mat4 m = mfromTRS(Vec3{1, -2, 3},
+                          qnorm(qaxisAngle(Vec3{1, 1, 0}, 0.6f)),
+                          Vec3{k, 2 * k, 0.5f * k});
+        Mat4 id = mmul(m, minverse(m));
+        for (int i = 0; i < 16; ++i) {
+            int row = i % 4, col = i / 4;
+            float expected = (row == col) ? 1.0f : 0.0f;
+            ASSERT(nearly(id.data[i], expected, 1e-3f), "m * m^-1 = I at any scale");
+        }
+    }
+    // Anisotropic: one axis scaled 1e-5 against a large translation.
+    Mat4 thin = mmul(mtranslate(Vec3{1e4f, 0, 0}), mscale(Vec3{1e-5f, 1, 1}));
+    Mat4 thinInv = minverse(thin);
+    ASSERT(nearly(thinInv.at(0, 0), 1e5f, 1.0f), "thin axis inverts");
+
+    // Singular at any scale: a zero column, a repeated column, rank 2 scaled
+    // tiny, and a NaN entry all give the identity.
+    auto isIdentity = [](const Mat4& m) {
+        for (int i = 0; i < 16; ++i)
+            if (m.data[i] != ((i % 5 == 0) ? 1.0f : 0.0f)) return false;
+        return true;
+    };
+    ASSERT(isIdentity(minverse(mscale(Vec3{1, 0, 1}))), "zero column");
+    for (float k : scales) {
+        Mat4 dup;
+        for (int r = 0; r < 4; ++r) {
+            dup.at(r, 0) = (r + 1) * 0.37f * k;
+            dup.at(r, 1) = (r + 1) * 0.37f * k;   // == column 0
+            dup.at(r, 2) = (3 - r) * 0.11f * k;
+            dup.at(r, 3) = (r * r + 1) * 0.5f * k;
+        }
+        ASSERT(isIdentity(minverse(dup)), "repeated column is singular at any scale");
+        Mat4 rank;  // rows 1,2,3 arithmetic progression: 4x4 of i+j form
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c) rank.at(r, c) = float(r * 4 + c + 1) * 0.1f * k;
+        ASSERT(isIdentity(minverse(rank)), "rank-2 matrix is singular at any scale");
+    }
+    Mat4 bad = midentity();
+    bad.at(1, 2) = NAN;
+    ASSERT(isIdentity(minverse(bad)), "NaN entry");
 }
 
 TEST(mat_fromQuat) {

@@ -58,7 +58,9 @@ inline constexpr Mat4 mtranspose(const Mat4& m) {
     return r;
 }
 
-// General 4x4 inverse via cofactor expansion. Returns identity if singular.
+// General 4x4 inverse via cofactor expansion. Returns identity if singular at
+// float precision: the test is relative to the matrix's own scale, not a
+// fixed determinant cutoff (see below).
 inline Mat4 minverse(const Mat4& m) {
     const float* a = m.data;
     float inv[16];
@@ -95,11 +97,34 @@ inline Mat4 minverse(const Mat4& m) {
     inv[15] =  a[0]*a[5]*a[10]  - a[0]*a[6]*a[9]   - a[4]*a[1]*a[10]
              + a[4]*a[2]*a[9]   + a[8]*a[1]*a[6]   - a[8]*a[2]*a[5];
 
-    float det = a[0]*inv[0] + a[1]*inv[4] + a[2]*inv[8] + a[3]*inv[12];
-    if (std::fabs(det) < 1e-20f) return midentity();
-    float invDet = 1.0f / det;
+    // The determinant is summed in double so a matrix at a tiny or huge
+    // scale neither underflows nor overflows it (det goes as scale^4).
+    const double det = double(a[0])*inv[0] + double(a[1])*inv[4]
+                     + double(a[2])*inv[8] + double(a[3])*inv[12];
+
+    // Singularity is scale-relative: det is a signed sum of 24 products of
+    // four entries, and the float cofactors carry a rounding error of a few
+    // ulps of the sum of those products' magnitudes (the permanent of |m|).
+    // A det inside that error band is cancellation noise, i.e. singular at
+    // float precision. Scaling any row or column scales det and the bound
+    // alike, so a well-conditioned matrix at scale 1e-6 inverts as readily as
+    // one at scale 1; a fixed cutoff on det counted it singular.
+    auto perm3 = [a](int r0, int r1, int r2) {
+        auto e = [a](int row, int col) { return double(std::fabs(a[col * 4 + row])); };
+        return e(r0,1) * (e(r1,2)*e(r2,3) + e(r1,3)*e(r2,2))
+             + e(r1,1) * (e(r0,2)*e(r2,3) + e(r0,3)*e(r2,2))
+             + e(r2,1) * (e(r0,2)*e(r1,3) + e(r0,3)*e(r1,2));
+    };
+    const double perm = double(std::fabs(a[0])) * perm3(1, 2, 3)
+                      + double(std::fabs(a[1])) * perm3(0, 2, 3)
+                      + double(std::fabs(a[2])) * perm3(0, 1, 3)
+                      + double(std::fabs(a[3])) * perm3(0, 1, 2);
+    constexpr double kRelEps = 16.0 * 1.1920928955078125e-7;  // 16 float ulps
+    // Written as !(>) so a zero matrix and a NaN determinant are singular too.
+    if (!(std::fabs(det) > kRelEps * perm)) return midentity();
+    const double invDet = 1.0 / det;
     Mat4 r;
-    for (int i = 0; i < 16; ++i) r.data[i] = inv[i] * invDet;
+    for (int i = 0; i < 16; ++i) r.data[i] = float(inv[i] * invDet);
     return r;
 }
 
