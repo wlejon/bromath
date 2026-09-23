@@ -5,8 +5,9 @@
 // returns a non-negative signed distance.
 //
 // Extracted from a view-projection matrix via Gribb-Hartmann: each plane is
-// a linear combination of matrix rows. Works for both GL and DX style VP
-// matrices since we normalize the planes.
+// a linear combination of matrix rows. The near plane depends on the clip
+// depth range: GL-style [-1, 1] (mperspective / mortho, the default) is
+// row3 + row2; D3D/Vulkan-style [0, 1] (zeroToOneDepth) is row2 alone.
 
 #include "bromath/aabb.h"
 #include "bromath/mat.h"
@@ -22,7 +23,7 @@ struct Frustum {
     Plane planes[6]; // left, right, bottom, top, near, far
 };
 
-inline Frustum ffromViewProj(const Mat4& vp) {
+inline Frustum ffromViewProj(const Mat4& vp, bool zeroToOneDepth = false) {
     auto row = [&](int r) {
         return Vec3{ vp.at(r, 0), vp.at(r, 1), vp.at(r, 2) };
     };
@@ -43,7 +44,8 @@ inline Frustum ffromViewProj(const Mat4& vp) {
     f.planes[1] = makePlane(r3 - r0, w3 - w0); // right
     f.planes[2] = makePlane(r3 + r1, w3 + w1); // bottom
     f.planes[3] = makePlane(r3 - r1, w3 - w1); // top
-    f.planes[4] = makePlane(r3 + r2, w3 + w2); // near
+    f.planes[4] = zeroToOneDepth ? makePlane(r2, w2)             // near: z >= 0
+                                 : makePlane(r3 + r2, w3 + w2);  // near: z >= -w
     f.planes[5] = makePlane(r3 - r2, w3 - w2); // far
     return f;
 }
@@ -59,6 +61,7 @@ inline bool fcontains(const Frustum& f, Vec3 p) {
 // at least one plane. May return true for boxes that straddle the frustum
 // corners (standard "false positives" for plane-by-plane culling).
 inline bool fintersects(const Frustum& f, const AABB3& a) {
+    if (aisEmpty(a)) return false;  // no box to see
     for (int i = 0; i < 6; ++i) {
         const Plane& p = f.planes[i];
         // The "positive vertex" of the AABB relative to the plane normal —

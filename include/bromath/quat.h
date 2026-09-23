@@ -54,7 +54,9 @@ inline constexpr Vec3 qrotate(Quat q, Vec3 v) {
          + vcross(u, v) * (2.0f * s);
 }
 
+// A zero axis names no rotation: the identity (not the zero quaternion).
 inline Quat qaxisAngle(Vec3 axis, float angleRad) {
+    if (!(vlen2(axis) > 1e-40f)) return qidentity();
     Vec3 a = vnorm(axis);
     float h = angleRad * 0.5f;
     float s = std::sin(h);
@@ -78,7 +80,9 @@ inline Quat qfromTo(Vec3 from, Vec3 to) {
     return {c.x * invs, c.y * invs, c.z * invs, s * 0.5f};
 }
 
-// Euler-XYZ: roll (x) -> pitch (y) -> yaw (z), intrinsic. Radians.
+// Euler angles in radians, q = qz(rz) * qy(ry) * qx(rx): rotate about the
+// fixed X axis first, then Y, then Z (extrinsic XYZ, which is intrinsic ZYX:
+// yaw, then pitch, then roll about the body axes).
 inline Quat qfromEuler(float rx, float ry, float rz) {
     float cx = std::cos(rx * 0.5f), sx = std::sin(rx * 0.5f);
     float cy = std::cos(ry * 0.5f), sy = std::sin(ry * 0.5f);
@@ -93,16 +97,21 @@ inline Quat qfromEuler(float rx, float ry, float rz) {
 
 inline Quat qfromEuler(Vec3 r) { return qfromEuler(r.x, r.y, r.z); }
 
-// Decompose unit quaternion to Euler XYZ (rx, ry, rz). Handles gimbal pole.
+// Decompose unit quaternion to the (rx, ry, rz) qfromEuler takes. Handles the
+// gimbal pole (ry = +-pi/2), where rx is folded into rz.
 inline Vec3 qtoEuler(Quat q) {
     Vec3 e;
     float sinp = 2.0f * (q.w * q.y - q.z * q.x);
-    if (std::fabs(sinp) >= 1.0f) {
-        // Gimbal lock — clamp pitch, fold roll into yaw.
+    // Within ~1e-3 rad of the pole the roll and yaw terms below are both
+    // near zero and their ratio is rounding noise, so fold there too.
+    if (std::fabs(sinp) >= 0.999999f) {
+        // Gimbal lock — clamp pitch, fold roll into yaw. There the matrix is
+        // Rz(rz') * Ry(+-pi/2), whose first two rows give rz' from
+        // (-m01, m11) = (-2(xy - wz), 1 - 2(x^2 + z^2)).
         e.y = std::copysign(HALF_PI, sinp);
         e.x = 0.0f;
         e.z = std::atan2(-2.0f * (q.x * q.y - q.w * q.z),
-                          1.0f - 2.0f * (q.y * q.y + q.z * q.z));
+                          1.0f - 2.0f * (q.x * q.x + q.z * q.z));
     } else {
         e.y = std::asin(sinp);
         e.x = std::atan2(2.0f * (q.w * q.x + q.y * q.z),

@@ -122,3 +122,34 @@ TEST(ray_triangle) {
     RayHit hm = rIntersectTriangle(miss, v0, v1, v2);
     ASSERT(!hm.hit, "ray misses triangle");
 }
+
+TEST(ray_aabb_normals_inside_and_zero_direction) {
+    AABB3 box{{-1, -1, -1}, {1, 1, 1}};
+    // From outside, moving +x: enters the min-x face, normal -x.
+    RayHit in = rIntersectAABB(Ray{{-5, 0, 0}, {1, 0, 0}}, box);
+    ASSERT(in.hit && nearly(in.t, 4.0f) && in.normal.x == -1.0f, "entry face normal");
+    // From inside, moving +x: leaves through the max-x face, normal +x (the
+    // entry face, behind the origin, used to be reported).
+    RayHit out = rIntersectAABB(Ray{{0, 0, 0}, {1, 0, 0}}, box);
+    ASSERT(out.hit && nearly(out.t, 1.0f) && out.normal.x == 1.0f &&
+               out.normal.y == 0.0f && out.normal.z == 0.0f,
+           "exit face normal from inside");
+    RayHit outNeg = rIntersectAABB(Ray{{0, 0.5f, 0}, {0, -1, 0}}, box);
+    ASSERT(outNeg.hit && nearly(outNeg.t, 1.5f) && outNeg.normal.y == -1.0f,
+           "exit face normal moving -y");
+    // Diagonal from inside exits through whichever face comes first.
+    RayHit diag = rIntersectAABB(Ray{{0.5f, 0, 0}, {1, 1, 0}}, box);
+    ASSERT(diag.hit && nearly(diag.t, 0.5f) && diag.normal.x == 1.0f, "diagonal exit face");
+    // A zero direction never reaches a face (it reported t = inf).
+    RayHit zero = rIntersectAABB(Ray{{0, 0, 0}, {0, 0, 0}}, box);
+    ASSERT(!zero.hit, "zero direction inside a box: no hit");
+    ASSERT(!rIntersectSphere(Ray{{0, 0, 0}, {0, 0, 0}}, Sphere{{0, 0, 0}, 1.0f}).hit,
+           "zero direction: no sphere hit (was NaN)");
+}
+
+TEST(aabb_transform_empty) {
+    AABB3 e = atransform(aempty3(), mtranslate(Vec3{1, 2, 3}));
+    ASSERT(aisEmpty(e) && !std::isnan(e.min.x), "empty box transforms to an empty box, not NaN");
+    AABB3 b = atransform(AABB3{{-1, -1, -1}, {1, 1, 1}}, mtranslate(Vec3{1, 2, 3}));
+    ASSERT(nearly(b.min.x, 0.0f) && nearly(b.max.z, 4.0f), "non-empty box still transforms");
+}

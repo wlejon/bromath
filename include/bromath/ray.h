@@ -11,6 +11,7 @@
 #include "bromath/vec.h"
 
 #include <cmath>
+#include <limits>
 
 namespace bromath {
 
@@ -31,6 +32,9 @@ inline constexpr Vec3 rat(const Ray& r, float t) {
 }
 
 // Slab method (Williams). Returns t of first hit in [0, +inf), or hit=false.
+// From outside, that is the entry point with the entered face's outward
+// normal; from inside, the exit point with the exited face's outward normal.
+// A zero direction hits nothing.
 inline RayHit rIntersectAABB(const Ray& r, const AABB3& a) {
     float tmin = -std::numeric_limits<float>::infinity();
     float tmax =  std::numeric_limits<float>::infinity();
@@ -38,8 +42,8 @@ inline RayHit rIntersectAABB(const Ray& r, const AABB3& a) {
     const float* d = &r.direction.x;
     const float* lo = &a.min.x;
     const float* hi = &a.max.x;
-    int hitAxis = 0;
-    float hitSign = 1.0f;
+    int entryAxis = -1, exitAxis = -1;
+    float entrySign = 1.0f, exitSign = 1.0f;
     for (int i = 0; i < 3; ++i) {
         if (std::fabs(d[i]) < 1e-20f) {
             if (o[i] < lo[i] || o[i] > hi[i]) return {};
@@ -48,24 +52,30 @@ inline RayHit rIntersectAABB(const Ray& r, const AABB3& a) {
         float inv = 1.0f / d[i];
         float t1 = (lo[i] - o[i]) * inv;
         float t2 = (hi[i] - o[i]) * inv;
+        // Moving toward +axis the ray enters through the min face (outward
+        // normal -1) and leaves through the max face (+1); toward -axis the
+        // other way round.
         float lower = t1, upper = t2;
-        float sign = -1.0f;
-        if (t1 > t2) { lower = t2; upper = t1; sign = 1.0f; }
-        if (lower > tmin) { tmin = lower; hitAxis = i; hitSign = sign; }
-        if (upper < tmax) tmax = upper;
+        float inSign = -1.0f, outSign = 1.0f;
+        if (t1 > t2) { lower = t2; upper = t1; inSign = 1.0f; outSign = -1.0f; }
+        if (lower > tmin) { tmin = lower; entryAxis = i; entrySign = inSign; }
+        if (upper < tmax) { tmax = upper; exitAxis = i; exitSign = outSign; }
         if (tmin > tmax) return {};
     }
+    if (exitAxis < 0) return {};  // zero direction: never reaches a face
     if (tmax < 0.0f) return {};
-    float t = tmin >= 0.0f ? tmin : tmax;
+    const bool entering = tmin >= 0.0f;
+    float t = entering ? tmin : tmax;
     Vec3 n{0, 0, 0};
-    (&n.x)[hitAxis] = hitSign;
+    (&n.x)[entering ? entryAxis : exitAxis] = entering ? entrySign : exitSign;
     return { true, t, rat(r, t), n };
 }
 
-// Geometric solution. Returns nearest non-negative t.
+// Quadratic solution. Returns nearest non-negative t.
 inline RayHit rIntersectSphere(const Ray& r, const Sphere& s) {
     Vec3 oc = r.origin - s.center;
     float a = vdot(r.direction, r.direction);
+    if (!(a > 1e-30f)) return {};  // zero (or NaN) direction
     float b = 2.0f * vdot(oc, r.direction);
     float c = vdot(oc, oc) - s.radius * s.radius;
     float disc = b*b - 4*a*c;

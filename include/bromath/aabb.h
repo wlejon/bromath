@@ -8,6 +8,7 @@
 #include "bromath/scalar.h"
 #include "bromath/vec.h"
 
+#include <cmath>
 #include <limits>
 
 namespace bromath {
@@ -77,7 +78,9 @@ inline AABB3 afromPoints(const float* pts, int count, int stride = 3) {
 
 // Transform an AABB by a 4x4 affine matrix and return the axis-aligned
 // bound of the result. Uses Arvo's trick: O(1) per corner via row sums.
+// An empty box stays empty (its center would be inf - inf = NaN).
 inline AABB3 atransform(const AABB3& a, const Mat4& m) {
+    if (aisEmpty(a)) return aempty3();
     Vec3 c = acenter(a);
     Vec3 e = ahalfExtent(a);
     Vec3 newC = mtransformPoint(m, c);

@@ -70,3 +70,34 @@ TEST(quat_norm) {
     ASSERT(nearly(qlen(n), 1.0f), "normalize length 1");
     ASSERT(nearly(n.x, 1.0f), "normalize x");
 }
+
+TEST(quat_axis_angle_zero_axis) {
+    Quat q = qaxisAngle(Vec3{0, 0, 0}, PI);
+    ASSERT(q.x == 0 && q.y == 0 && q.z == 0 && q.w == 1, "zero axis gives identity, not (0,0,0,0)");
+}
+
+static bool rotatesSame(Quat a, Quat b) {
+    for (Vec3 v : {Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}}) {
+        Vec3 x = qrotate(a, v), y = qrotate(b, v);
+        if (!nearly(x.x, y.x, 1e-3f) || !nearly(x.y, y.y, 1e-3f) || !nearly(x.z, y.z, 1e-3f))
+            return false;
+    }
+    return true;
+}
+
+TEST(quat_euler_convention_and_pole) {
+    // q = qz * qy * qx: X first about fixed axes, then Y, then Z.
+    float rx = 0.3f, ry = -0.7f, rz = 1.1f;
+    Quat composed = qmul(qaxisAngle({0, 0, 1}, rz),
+                         qmul(qaxisAngle({0, 1, 0}, ry), qaxisAngle({1, 0, 0}, rx)));
+    ASSERT(rotatesSame(qfromEuler(rx, ry, rz), composed), "qfromEuler is qz * qy * qx");
+    Vec3 e = qtoEuler(qfromEuler(rx, ry, rz));
+    ASSERT(nearly(e.x, rx, 1e-4f) && nearly(e.y, ry, 1e-4f) && nearly(e.z, rz, 1e-4f),
+           "qtoEuler inverts qfromEuler");
+    // At the pole the round trip keeps the rotation, with rx folded into rz.
+    for (float pitch : {HALF_PI, -HALF_PI}) {
+        Quat q = qfromEuler(0.4f, pitch, 0.9f);
+        Vec3 pe = qtoEuler(q);
+        ASSERT(rotatesSame(qfromEuler(pe), q), "pole: qtoEuler round-trips the rotation");
+    }
+}

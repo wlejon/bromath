@@ -145,13 +145,19 @@ inline constexpr Mat4 mfromTRS(Vec3 t, Quat r, Vec3 s) {
 }
 
 // Decompose an affine TRS matrix back into components. Skew is discarded.
+// A mirroring matrix (negative determinant) comes back with a negative x
+// scale, so the rotation stays a proper rotation and mfromTRS rebuilds it.
 inline void mdecompose(const Mat4& m, Vec3& t, Quat& r, Vec3& s) {
     t = { m.at(0,3), m.at(1,3), m.at(2,3) };
     Vec3 c0{ m.at(0,0), m.at(1,0), m.at(2,0) };
     Vec3 c1{ m.at(0,1), m.at(1,1), m.at(2,1) };
     Vec3 c2{ m.at(0,2), m.at(1,2), m.at(2,2) };
     s = { vlen(c0), vlen(c1), vlen(c2) };
-    if (s.x > 1e-20f) c0 = c0 / s.x;
+    if (vdot(vcross(c0, c1), c2) < 0.0f) {
+        s.x = -s.x;
+        c0 = -c0;
+    }
+    if (std::fabs(s.x) > 1e-20f) c0 = c0 / std::fabs(s.x);
     if (s.y > 1e-20f) c1 = c1 / s.y;
     if (s.z > 1e-20f) c2 = c2 / s.z;
     // Build a quaternion from the orthonormal basis (Shepperd's method).
@@ -184,10 +190,14 @@ inline void mdecompose(const Mat4& m, Vec3& t, Quat& r, Vec3& s) {
 }
 
 // Right-handed view matrix looking from `eye` toward `center`, with `up`
-// approximating world up. Matches gluLookAt.
+// approximating world up. Matches gluLookAt. When `up` is parallel to the
+// view direction (looking straight up or down) any perpendicular up is used,
+// instead of a zero right vector collapsing the matrix.
 inline Mat4 mlookAt(Vec3 eye, Vec3 center, Vec3 up) {
     Vec3 f = vnorm(center - eye);          // forward
-    Vec3 s = vnorm(vcross(f, up));         // right
+    Vec3 side = vcross(f, up);
+    if (vlen2(side) <= 1e-12f * vlen2(up)) side = vcross(f, vperpendicular(f));
+    Vec3 s = vnorm(side);                  // right
     Vec3 u = vcross(s, f);                 // recomputed up
     Mat4 m;
     m.at(0,0) = s.x;  m.at(0,1) = s.y;  m.at(0,2) = s.z;  m.at(0,3) = -vdot(s, eye);
