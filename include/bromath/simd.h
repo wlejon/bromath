@@ -27,7 +27,9 @@
         #include <smmintrin.h>
     #endif
     #define BROMATH_SIMD_SSE2 1
-#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+#elif (defined(__ARM_NEON) || defined(__ARM_NEON__)) && (defined(__aarch64__) || defined(_M_ARM64))
+    // AArch64 only: vdivq_f32 / vsqrtq_f32 / vaddvq_f32 do not exist on
+    // 32-bit ARM NEON, which takes the scalar path.
     #include <arm_neon.h>
     #define BROMATH_SIMD_NEON 1
 #else
@@ -153,7 +155,9 @@ inline Simd4f operator/(Simd4f a, Simd4f b) {
 }
 
 inline Simd4f simdFmadd(Simd4f a, Simd4f b, Simd4f c) {
-#if defined(BROMATH_SIMD_AVX2)
+    // FMA is its own extension: GCC/Clang with -mavx2 but no -mfma reject
+    // _mm_fmadd_ps. MSVC defines no __FMA__ but /arch:AVX2 implies FMA3.
+#if defined(BROMATH_SIMD_AVX2) && (defined(__FMA__) || defined(_MSC_VER))
     return Simd4f(_mm_fmadd_ps(a.v, b.v, c.v));
 #elif defined(BROMATH_SIMD_NEON)
     return Simd4f(vmlaq_f32(c.v, a.v, b.v));

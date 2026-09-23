@@ -54,7 +54,9 @@ public:
         maxRadius_ = 0.0f;
     }
 
-    // Insert a point. Equivalent to inserting a zero-radius sphere.
+    // Insert a point. Equivalent to inserting a zero-radius sphere. Ids are
+    // unique keys: inserting an id that is already present moves that entry
+    // (the pre-flat-table grid kept both).
     void insert(Vec3 p, int32_t id) {
         insertEntry(p, 0.0f, id);
     }
@@ -67,7 +69,8 @@ public:
         if (s.radius > maxRadius_) maxRadius_ = s.radius;
     }
 
-    // Remove every entry whose id matches in O(1) time via entity reverse map.
+    // Remove the entry with this id (ids are unique; see insert) in O(1) via
+    // the id reverse map.
     // maxRadius_ is left as an upper bound (never tightened) — a stale
     // maxRadius only inflates query cost, never correctness.
     void remove(int32_t id) {
