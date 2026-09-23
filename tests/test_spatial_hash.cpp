@@ -6,6 +6,8 @@
 #include "bromath/vec.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <random>
 #include <set>
 #include <vector>
@@ -177,5 +179,96 @@ TEST(spatial_hash_stress_insert_remove_many) {
     h.radiusQuery(qCenter, qRadius, got);
     std::set<int32_t> gotSet(got.begin(), got.end());
     ASSERT(brute == gotSet, "post-removal radius query matches ground truth");
+}
+
+TEST(spatial_hash_negative_and_zero_radius) {
+    SpatialHash3D h(1.0f);
+    h.insert(Vec3{0, 0, 0}, 1);
+    h.insert(Sphere{{0.5f, 0, 0}, 3.0f}, 2);
+    std::vector<int32_t> hits;
+    h.radiusQuery(Vec3{0, 0, 0}, -5.0f, hits);
+    ASSERT(hits.empty(), "negative radius matches nothing");
+    h.radiusQuery(Vec3{0, 0, 0}, std::nanf(""), hits);
+    ASSERT(hits.empty(), "NaN radius matches nothing");
+
+    SpatialHash3D p(1.0f);
+    p.insert(Vec3{2, 2, 2}, 7);
+    p.radiusQuery(Vec3{2, 2, 2}, 0.0f, hits);
+    ASSERT(hits.size() == 1 && hits[0] == 7, "radius 0 finds a point at the center");
+}
+
+TEST(spatial_hash_huge_query_no_duplicates) {
+    // A query box wider than the 2^21-cell key period used to visit wrapped
+    // cells more than once (reporting ids twice), and a huge radius looped
+    // over every cell in its cube.
+    SpatialHash3D h(1.0f);
+    h.insert(Vec3{0, 0, 0}, 1);
+    h.insert(Vec3{3e6f, 0, 0}, 2);
+    h.insert(Vec3{-3e6f, 5, 5}, 3);
+    std::vector<int32_t> hits;
+    h.radiusQuery(Vec3{0, 0, 0}, 1e7f, hits);
+    std::vector<int32_t> sorted = hits;
+    std::sort(sorted.begin(), sorted.end());
+    ASSERT(sorted == (std::vector<int32_t>{1, 2, 3}), "huge radius finds each entry once");
+
+    hits.clear();
+    h.queryAABB(AABB3{{-1e7f, -1e7f, -1e7f}, {1e7f, 1e7f, 1e7f}}, hits);
+    ASSERT(hits.size() == 3, "huge AABB reports each entry once");
+
+    ASSERT(h.nearest(Vec3{2.9e6f, 0, 0}, 1e9f) == 2, "nearest with a huge radius");
+
+    // Infinite radius: everything, once.
+    hits.clear();
+    h.radiusQuery(Vec3{0, 0, 0}, std::numeric_limits<float>::infinity(), hits);
+    ASSERT(hits.size() == 3, "infinite radius reports each entry once");
+}
+
+TEST(spatial_hash_nonfinite_positions) {
+    // Out-of-int-range and NaN positions have a cell rather than an
+    // undefined conversion; they never match a finite query.
+    SpatialHash3D h(0.001f);
+    h.insert(Vec3{1e30f, 0, 0}, 1);
+    h.insert(Vec3{std::nanf(""), 0, 0}, 2);
+    h.insert(Vec3{-std::numeric_limits<float>::infinity(), 0, 0}, 3);
+    h.insert(Vec3{0, 0, 0}, 4);
+    std::vector<int32_t> hits;
+    h.radiusQuery(Vec3{0, 0, 0}, 0.01f, hits);
+    ASSERT(hits.size() == 1 && hits[0] == 4, "only the finite nearby point matches");
+    h.remove(2);
+    h.remove(1);
+    ASSERT(h.size() == 2, "non-finite entries remove cleanly");
+}
+
+TEST(spatial_hash_cell_walk_matches_scan) {
+    // Small queries over a dense grid walk cells; large ones scan. Both must
+    // agree with brute force.
+    SpatialHash3D h(0.25f);
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<float> uni(-5.0f, 5.0f);
+    std::vector<Vec3> pts;
+    for (int i = 0; i < 5000; ++i) {
+        Vec3 p{uni(rng), uni(rng), uni(rng)};
+        pts.push_back(p);
+        h.insert(p, i);
+    }
+    for (float r : {0.1f, 0.6f, 2.0f, 20.0f}) {
+        Vec3 c{0.3f, -0.2f, 0.1f};
+        std::vector<int32_t> got;
+        h.radiusQuery(c, r, got);
+        std::vector<int32_t> brute;
+        for (size_t i = 0; i < pts.size(); ++i)
+            if (vdist2(pts[i], c) <= r * r) brute.push_back(static_cast<int32_t>(i));
+        std::sort(got.begin(), got.end());
+        ASSERT(got == brute, "radius query equals brute force at every scale");
+
+        AABB3 box{{c.x - r, c.y - r, c.z - r}, {c.x + r, c.y + r, c.z + r}};
+        std::vector<int32_t> gotBox;
+        h.queryAABB(box, gotBox);
+        std::vector<int32_t> bruteBox;
+        for (size_t i = 0; i < pts.size(); ++i)
+            if (acontains(box, pts[i])) bruteBox.push_back(static_cast<int32_t>(i));
+        std::sort(gotBox.begin(), gotBox.end());
+        ASSERT(gotBox == bruteBox, "AABB query equals brute force at every scale");
+    }
 }
 

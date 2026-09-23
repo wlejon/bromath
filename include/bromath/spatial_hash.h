@@ -119,31 +119,24 @@ public:
 
     // Append ids of entries whose extent lies within `radius` of `center`.
     // Existing contents of `out` are not cleared.
+    // A negative (or NaN) radius matches nothing; radius 0 finds points that
+    // sit exactly at `center`.
     void radiusQuery(Vec3 center, float radius, std::vector<int32_t>& out) const {
-        if (radius <= 0.0f && maxRadius_ <= 0.0f) return;
+        if (!(radius >= 0.0f)) return;
         if (entries_.empty() || cellTable_.empty()) return;
+        auto match = [&](const Entry& e) {
+            const float reach = radius + e.r;
+            if (reach >= 0.0f && vdist2(e.p, center) <= reach * reach) out.push_back(e.id);
+        };
         const float searchR = radius + maxRadius_;
-        const int extent = static_cast<int>(std::ceil(searchR * invCell_));
-        int cx, cy, cz;
-        cellOf(center, cx, cy, cz);
-        for (int dz = -extent; dz <= extent; ++dz) {
-            for (int dy = -extent; dy <= extent; ++dy) {
-                for (int dx = -extent; dx <= extent; ++dx) {
-                    uint64_t key = makeKey(cx + dx, cy + dy, cz + dz);
-                    size_t slot = findCellSlot(key);
-                    if (slot == SIZE_MAX) continue;
-                    uint32_t cur = cellTable_[slot].head;
-                    while (cur != INVALID_INDEX) {
-                        const Entry& e = entries_[cur];
-                        const float reach = radius + e.r;
-                        if (vdist2(e.p, center) <= reach * reach) {
-                            out.push_back(e.id);
-                        }
-                        cur = e.nextInCell;
-                    }
-                }
-            }
+        int x0, y0, z0, x1, y1, z1;
+        cellOf({center.x - searchR, center.y - searchR, center.z - searchR}, x0, y0, z0);
+        cellOf({center.x + searchR, center.y + searchR, center.z + searchR}, x1, y1, z1);
+        if (scanIsCheaper(x0, y0, z0, x1, y1, z1)) {
+            for (const Entry& e : entries_) match(e);
+            return;
         }
+        forEachCellEntry(x0, y0, z0, x1, y1, z1, match);
     }
 
     // Append ids of entries that touch `box`. Point entries match when their
@@ -155,25 +148,18 @@ public:
         int ix0, iy0, iz0, ix1, iy1, iz1;
         cellOf({box.min.x - pad, box.min.y - pad, box.min.z - pad}, ix0, iy0, iz0);
         cellOf({box.max.x + pad, box.max.y + pad, box.max.z + pad}, ix1, iy1, iz1);
-        for (int iz = iz0; iz <= iz1; ++iz) {
-            for (int iy = iy0; iy <= iy1; ++iy) {
-                for (int ix = ix0; ix <= ix1; ++ix) {
-                    uint64_t key = makeKey(ix, iy, iz);
-                    size_t slot = findCellSlot(key);
-                    if (slot == SIZE_MAX) continue;
-                    uint32_t cur = cellTable_[slot].head;
-                    while (cur != INVALID_INDEX) {
-                        const Entry& e = entries_[cur];
-                        if (e.r <= 0.0f) {
-                            if (acontains(box, e.p)) out.push_back(e.id);
-                        } else if (sphereTouchesAABB(e.p, e.r, box)) {
-                            out.push_back(e.id);
-                        }
-                        cur = e.nextInCell;
-                    }
-                }
+        auto match = [&](const Entry& e) {
+            if (e.r <= 0.0f) {
+                if (acontains(box, e.p)) out.push_back(e.id);
+            } else if (sphereTouchesAABB(e.p, e.r, box)) {
+                out.push_back(e.id);
             }
+        };
+        if (scanIsCheaper(ix0, iy0, iz0, ix1, iy1, iz1)) {
+            for (const Entry& e : entries_) match(e);
+            return;
         }
+        forEachCellEntry(ix0, iy0, iz0, ix1, iy1, iz1, match);
     }
 
     // Nearest entry whose center lies within `maxRadius` of `center`. Uses
@@ -181,30 +167,23 @@ public:
     // semantics, use radiusQuery and pick the smallest reach yourself.
     // Returns -1 if no entry is within range.
     int32_t nearest(Vec3 center, float maxRadius) const {
-        if (maxRadius <= 0.0f || entries_.empty() || cellTable_.empty()) return -1;
-        const int extent = static_cast<int>(std::ceil(maxRadius * invCell_));
-        int cx, cy, cz;
-        cellOf(center, cx, cy, cz);
+        if (!(maxRadius > 0.0f) || entries_.empty() || cellTable_.empty()) return -1;
+        int x0, y0, z0, x1, y1, z1;
+        cellOf({center.x - maxRadius, center.y - maxRadius, center.z - maxRadius}, x0, y0, z0);
+        cellOf({center.x + maxRadius, center.y + maxRadius, center.z + maxRadius}, x1, y1, z1);
         int32_t bestId = -1;
         float bestD2 = maxRadius * maxRadius;
-        for (int dz = -extent; dz <= extent; ++dz) {
-            for (int dy = -extent; dy <= extent; ++dy) {
-                for (int dx = -extent; dx <= extent; ++dx) {
-                    uint64_t key = makeKey(cx + dx, cy + dy, cz + dz);
-                    size_t slot = findCellSlot(key);
-                    if (slot == SIZE_MAX) continue;
-                    uint32_t cur = cellTable_[slot].head;
-                    while (cur != INVALID_INDEX) {
-                        const Entry& e = entries_[cur];
-                        float d2 = vdist2(e.p, center);
-                        if (d2 < bestD2) {
-                            bestD2 = d2;
-                            bestId = e.id;
-                        }
-                        cur = e.nextInCell;
-                    }
-                }
+        auto consider = [&](const Entry& e) {
+            float d2 = vdist2(e.p, center);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                bestId = e.id;
             }
+        };
+        if (scanIsCheaper(x0, y0, z0, x1, y1, z1)) {
+            for (const Entry& e : entries_) consider(e);
+        } else {
+            forEachCellEntry(x0, y0, z0, x1, y1, z1, consider);
         }
         return bestId;
     }
@@ -245,10 +224,50 @@ private:
         return a | (b << 21) | (c << 42);
     }
 
+    // Cell coordinates are clamped to +-2^30 so a huge, infinite or NaN
+    // position still has a cell (a NaN one sits at the low limit) instead of
+    // an undefined float-to-int conversion; the keys wrap far below that
+    // anyway, and every query checks the real distance.
+    static int cellCoord(float v) {
+        constexpr float kLimit = 1073741824.0f;  // 2^30
+        const float f = std::floor(v);
+        if (!(f > -kLimit)) return -(1 << 30);
+        if (f > kLimit) return 1 << 30;
+        return static_cast<int>(f);
+    }
+
     void cellOf(Vec3 p, int& ix, int& iy, int& iz) const {
-        ix = static_cast<int>(std::floor(p.x * invCell_));
-        iy = static_cast<int>(std::floor(p.y * invCell_));
-        iz = static_cast<int>(std::floor(p.z * invCell_));
+        ix = cellCoord(p.x * invCell_);
+        iy = cellCoord(p.y * invCell_);
+        iz = cellCoord(p.z * invCell_);
+    }
+
+    // Whether a query over cells [x0..x1] x [y0..y1] x [z0..z1] should scan
+    // every entry instead: when the box holds more cells than there are
+    // entries, or spans a whole key period (2^21 cells) on an axis, where the
+    // wrapped keys would visit one cell twice and report its entries twice.
+    bool scanIsCheaper(int x0, int y0, int z0, int x1, int y1, int z1) const {
+        constexpr int64_t kKeyPeriod = int64_t(1) << 21;
+        const int64_t sx = int64_t(x1) - x0 + 1;
+        const int64_t sy = int64_t(y1) - y0 + 1;
+        const int64_t sz = int64_t(z1) - z0 + 1;
+        if (sx >= kKeyPeriod || sy >= kKeyPeriod || sz >= kKeyPeriod) return true;
+        return double(sx) * double(sy) * double(sz) > double(entries_.size());
+    }
+
+    template <typename Fn>
+    void forEachCellEntry(int x0, int y0, int z0, int x1, int y1, int z1, Fn&& fn) const {
+        for (int iz = z0; iz <= z1; ++iz) {
+            for (int iy = y0; iy <= y1; ++iy) {
+                for (int ix = x0; ix <= x1; ++ix) {
+                    size_t slot = findCellSlot(makeKey(ix, iy, iz));
+                    if (slot == SIZE_MAX) continue;
+                    for (uint32_t cur = cellTable_[slot].head; cur != INVALID_INDEX;
+                         cur = entries_[cur].nextInCell)
+                        fn(entries_[cur]);
+                }
+            }
+        }
     }
 
     static bool sphereTouchesAABB(Vec3 c, float r, const AABB3& b) {
