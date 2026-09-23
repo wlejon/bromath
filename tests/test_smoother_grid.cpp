@@ -17,6 +17,19 @@ TEST(smoother_chase) {
     ASSERT(nearly(v, 1.0f, 1e-4f), "smoother converges");
 }
 
+TEST(smoother_tickn_matches_ticks) {
+    Smoother a, b;
+    smootherSetTime(a, 10.0f, 44100.0f);
+    smootherReset(a, 0.0f);
+    smootherTarget(a, 1.0f);
+    b = a;
+    for (int i = 0; i < 441; ++i) smootherTick(a);
+    ASSERT(nearly(smootherTickN(b, 441), a.current, 1e-5f), "N ticks at once match N single ticks");
+    // A huge N costs one step, not N, and lands on the target.
+    ASSERT(nearly(smootherTickN(b, 2147483647), 1.0f, 1e-6f), "huge N converges without looping");
+    ASSERT(smootherTickN(b, -5) == b.current, "negative N is a no-op");
+}
+
 TEST(smoother_reset_zero_time) {
     Smoother s;
     smootherSetTime(s, 0.0f, 44100.0f);

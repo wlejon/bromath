@@ -40,8 +40,12 @@ inline float smootherTick(Smoother& s) {
 }
 
 // Advance N ticks at once — useful when the host loop is block-based.
+// Closed form: each tick keeps (1 - coeff) of the gap, so N ticks keep
+// (1 - coeff)^N of it, and the cost does not grow with N.
 inline float smootherTickN(Smoother& s, int n) {
-    for (int i = 0; i < n; ++i) smootherTick(s);
+    if (n <= 0) return s.current;
+    double keep = std::pow(1.0 - static_cast<double>(s.coeff), static_cast<double>(n));
+    s.current = static_cast<float>(s.target + (static_cast<double>(s.current) - s.target) * keep);
     return s.current;
 }
 
