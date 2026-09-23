@@ -6,6 +6,8 @@
 
 #include "bromath/vec.h"
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace bromath {
@@ -57,12 +59,22 @@ inline constexpr uint32_t cellHash(int32_t x, int32_t z) {
     return hashCombine(h, hashU32((uint32_t)z * 0x85ebca77u));
 }
 
+// Integer cell of a coordinate, clamped to +-2^30 so a huge, infinite or NaN
+// value (NaN goes to the low end) is not an undefined float-to-int cast.
+inline int32_t cellCoordOf(float v, float cellSize) {
+    constexpr float kLimit = 1073741824.0f;  // 2^30
+    const float f = std::floor(v / cellSize);
+    if (!(f > -kLimit)) return -(1 << 30);
+    if (f > kLimit) return 1 << 30;
+    return (int32_t)f;
+}
+
 // Hash a position into a cell index, useful for sparse spatial-hash tables.
+// A bucketCount of 0 gives 0.
 inline uint32_t positionToCell(Vec3 p, float cellSize, uint32_t bucketCount) {
-    int32_t cx = (int32_t)std::floor(p.x / cellSize);
-    int32_t cy = (int32_t)std::floor(p.y / cellSize);
-    int32_t cz = (int32_t)std::floor(p.z / cellSize);
-    return cellHash(cx, cy, cz) % bucketCount;
+    if (bucketCount == 0) return 0;
+    return cellHash(cellCoordOf(p.x, cellSize), cellCoordOf(p.y, cellSize),
+                    cellCoordOf(p.z, cellSize)) % bucketCount;
 }
 
 } // namespace bromath

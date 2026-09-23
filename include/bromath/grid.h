@@ -5,6 +5,7 @@
 // helpers here let callers convert between world coordinates and cell
 // indices without each subsystem rewriting the same math.
 
+#include "bromath/hash.h"
 #include "bromath/vec.h"
 
 #include <cmath>
@@ -29,12 +30,11 @@ inline constexpr bool gridInBounds(const GridFootprint2D& g, int col, int row) {
 }
 
 // Convert world XY to integer cell coordinate. May return out-of-range
-// indices — pair with gridInBounds when reading from a grid array.
+// indices — pair with gridInBounds when reading from a grid array. Clamped to
+// +-2^30 (NaN to the low end) so a far or non-finite point stays defined.
 inline void gridCellOf(const GridFootprint2D& g, Vec2 p, int& col, int& row) {
-    float fx = (p.x - g.origin.x) / g.cellSize;
-    float fy = (p.y - g.origin.y) / g.cellSize;
-    col = (int)std::floor(fx);
-    row = (int)std::floor(fy);
+    col = cellCoordOf(p.x - g.origin.x, g.cellSize);
+    row = cellCoordOf(p.y - g.origin.y, g.cellSize);
 }
 
 // Center point of cell (col, row) in world coordinates.

@@ -51,6 +51,9 @@ TEST(grid_cell_of) {
     ASSERT(c == 2 && r == 2, "cell offset");
     Vec2 ctr = gridCellCenter(g, 0, 0);
     ASSERT(nearly(ctr.x, 11.0f) && nearly(ctr.y, 21.0f), "cell center");
+    gridCellOf(g, Vec2{8.0f, 1e30f}, c, r);
+    ASSERT(c == -1 && r == (1 << 30), "far points clamp instead of overflowing int");
+    ASSERT(!gridInBounds(g, c, r), "clamped cell is out of bounds");
 }
 
 TEST(grid_index_3d) {

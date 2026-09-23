@@ -2,6 +2,9 @@
 #include "bromath/rng.h"
 #include "bromath/hash.h"
 
+#include <climits>
+#include <cmath>
+
 using namespace bromath;
 
 TEST(rng_deterministic) {
@@ -69,6 +72,34 @@ TEST(rng_int_range) {
         ASSERT(v >= 1 && v <= 10, "int range");
     }
     ASSERT(lo == 1 && hi == 10, "int range covers ends");
+}
+
+TEST(rng_int_full_range) {
+    // hi - lo overflowed int for spans past INT_MAX.
+    uint64_t s = 99;
+    bool neg = false, pos = false, inRange = true;
+    for (int i = 0; i < 200; ++i) {
+        int v = randInt(s, INT_MIN, INT_MAX);
+        neg = neg || v < -1000000;
+        pos = pos || v > 1000000;
+    }
+    for (int i = 0; i < 200; ++i) {
+        int v = randInt(s, -2000000000, 2000000000);
+        inRange = inRange && v >= -2000000000 && v <= 2000000000;
+    }
+    ASSERT(neg && pos, "full int range reaches both signs");
+    ASSERT(inRange, "wide range stays inside its bounds");
+    ASSERT(randInt(s, INT_MAX, INT_MAX) == INT_MAX, "single-value range at INT_MAX");
+}
+
+TEST(hash_position_edge_cases) {
+    ASSERT(positionToCell(Vec3{1, 2, 3}, 1.0f, 0) == 0, "zero buckets gives 0");
+    uint32_t a = positionToCell(Vec3{1e30f, 0, 0}, 1e-3f, 64);
+    uint32_t b = positionToCell(Vec3{std::nanf(""), 0, 0}, 1.0f, 64);
+    ASSERT(a < 64 && b < 64, "huge and NaN positions hash into range");
+    ASSERT(cellCoordOf(-2.5f, 1.0f) == -3 && cellCoordOf(2.5f, 1.0f) == 2, "cell coords floor");
+    ASSERT(cellCoordOf(1e30f, 1.0f) == (1 << 30) && cellCoordOf(-1e30f, 1.0f) == -(1 << 30),
+           "cell coords clamp");
 }
 
 TEST(hash_fnv1a_stable) {

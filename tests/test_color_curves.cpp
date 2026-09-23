@@ -2,6 +2,9 @@
 #include "bromath/color.h"
 #include "bromath/curves.h"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace bromath;
 
 TEST(color_lerp) {
@@ -101,4 +104,58 @@ TEST(curve_catmullRom) {
     ASSERT(nearly(s.x, p1.x, 1e-3f), "catmull(0) = p1");
     Vec3 e = ccatmullRom(p0, p1, p2, p3, 1.0f);
     ASSERT(nearly(e.x, p2.x, 1e-3f), "catmull(1) = p2");
+}
+
+TEST(curve_catmullRom_repeated_ends) {
+    // A spline starting on a repeated point stays a curve (it used to fall
+    // back to a straight lerp for the whole segment).
+    Vec3 p1{0, 0, 0}, p2{1, 0, 0}, p3{2, 1, 0};
+    Vec3 mid = ccatmullRom(p1, p1, p2, p3, 0.5f);
+    ASSERT(std::fabs(mid.y) > 1e-3f, "repeated first point: the segment still bends");
+    ASSERT(nearly(ccatmullRom(p1, p1, p2, p3, 0.0f).x, 0.0f, 1e-4f) &&
+               nearly(ccatmullRom(p1, p1, p2, p3, 1.0f).x, 1.0f, 1e-4f),
+           "repeated first point: endpoints kept");
+    Vec3 endMid = ccatmullRom(Vec3{-1, 1, 0}, p1, p2, p2, 0.5f);
+    ASSERT(std::fabs(endMid.y) > 1e-3f, "repeated last point: the segment still bends");
+    Vec3 same = ccatmullRom(Vec3{-1, 0, 0}, p1, p1, p3, 0.3f);
+    ASSERT(same.x == 0 && same.y == 0 && same.z == 0, "zero-length segment stays at its point");
+}
+
+// y for x on the CSS cubic-bezier, by bisection in double (the reference).
+static double easeRef(const CubicEase& c, double x) {
+    auto bx = [&](double t) { double u = 1 - t; return 3*u*u*t*c.p1x + 3*u*t*t*c.p2x + t*t*t; };
+    double lo = 0, hi = 1, t = 0.5;
+    for (int i = 0; i < 100; ++i) {
+        t = 0.5 * (lo + hi);
+        if (bx(t) < x) lo = t; else hi = t;
+    }
+    double u = 1 - t;
+    return 3*u*u*t*c.p1y + 3*u*t*t*c.p2y + t*t*t;
+}
+
+TEST(curve_cubicEase_flat_x) {
+    // x(t) flat at t = 0.5 (control x = 1 then 0): Newton creeps toward the
+    // inflection and stopped far short after 8 steps.
+    CubicEase c{1.0f, 0.0f, 0.0f, 1.0f};
+    float worst = 0.0f;
+    for (float x : {0.3f, 0.45f, 0.49f, 0.499f, 0.501f, 0.51f, 0.55f, 0.7f}) {
+        worst = std::max(worst, std::fabs(ccubicEase(c, x) - static_cast<float>(easeRef(c, x))));
+    }
+    ASSERT(worst < 2e-5f, "cubic ease matches the reference where x(t) is flat");
+    CubicEase ease{0.25f, 0.1f, 0.25f, 1.0f};
+    float worstEase = 0.0f;
+    for (int i = 1; i < 100; ++i) {
+        float x = i / 100.0f;
+        worstEase = std::max(worstEase,
+                             std::fabs(ccubicEase(ease, x) - static_cast<float>(easeRef(ease, x))));
+    }
+    ASSERT(worstEase < 1e-4f, "CSS ease matches the reference");
+}
+
+TEST(color_hex_trailing_and_nan) {
+    Color bad = cfromHex("#FF000080Z");
+    ASSERT(bad.a == 0.0f, "trailing characters after 8 digits are rejected");
+    ASSERT(cfromHex("#FF000080").a > 0.49f, "exactly 8 digits still parse");
+    Color8 n = ctoColor8(Color{std::nanf(""), 0.5f, 2.0f, std::nanf("")});
+    ASSERT(n.r == 0 && n.b == 255 && n.a == 0, "NaN channels encode as 0");
 }

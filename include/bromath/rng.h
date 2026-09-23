@@ -35,8 +35,9 @@ inline float randRange(uint64_t& state, float lo, float hi) {
 
 inline int randInt(uint64_t& state, int loInclusive, int hiInclusive) {
     if (hiInclusive < loInclusive) return loInclusive;
-    uint64_t span = (uint64_t)(hiInclusive - loInclusive) + 1ULL;
-    return loInclusive + (int)(splitmix64(state) % span);
+    // In 64 bits: hi - lo overflows int for spans past INT_MAX.
+    uint64_t span = (uint64_t)((int64_t)hiInclusive - (int64_t)loInclusive) + 1ULL;
+    return (int)((int64_t)loInclusive + (int64_t)(splitmix64(state) % span));
 }
 
 // Box-Muller standard normal sample.

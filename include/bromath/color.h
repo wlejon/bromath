@@ -62,13 +62,15 @@ inline Color cfromColor8(Color8 c) {
     };
 }
 
+// A NaN channel encodes as 0 (converting NaN to an integer is undefined).
 inline Color8 ctoColor8(Color c) {
-    auto enc = [](float x) -> uint8_t {
-        float s = clinearToSrgb(saturate(x)) * 255.0f + 0.5f;
-        return (uint8_t)clamp(s, 0.0f, 255.0f);
+    auto toByte = [](float s) -> uint8_t {
+        return s >= 0.0f ? (uint8_t)min(s, 255.0f) : uint8_t(0);  // NaN fails >=
     };
-    return { enc(c.r), enc(c.g), enc(c.b),
-             (uint8_t)clamp(c.a * 255.0f + 0.5f, 0.0f, 255.0f) };
+    auto enc = [&](float x) -> uint8_t {
+        return toByte(clinearToSrgb(saturate(x)) * 255.0f + 0.5f);
+    };
+    return { enc(c.r), enc(c.g), enc(c.b), toByte(c.a * 255.0f + 0.5f) };
 }
 
 // Parse "#RRGGBB" or "#RRGGBBAA" as sRGB and return linear Color. Returns
@@ -84,7 +86,8 @@ inline Color cfromHex(const char* hex) {
     int v[8] = {-1,-1,-1,-1,-1,-1,-1,-1};
     int n = 0;
     for (int i = 1; hex[i] && n < 8; ++i, ++n) v[n] = hd(hex[i]);
-    if (n != 6 && n != 8) return {0, 0, 0, 0};
+    // (n stops at 8, so a ninth character would otherwise go unnoticed.)
+    if ((n != 6 && n != 8) || hex[1 + n] != '\0') return {0, 0, 0, 0};
     for (int i = 0; i < n; ++i) if (v[i] < 0) return {0, 0, 0, 0};
     Color8 c{
         (uint8_t)(v[0]*16 + v[1]),
