@@ -40,7 +40,23 @@
     #define BROMATH_SIMD_SCALAR 1
 #endif
 
+// Each path lives in its own inline namespace. Callers still spell
+// bromath::Simd4f, but the paths mangle apart: two TUs built with different
+// paths fail to link instead of silently merging one path's inline bodies
+// into the other (an ODR violation), and coverage tools see the scalar and
+// SIMD definitions as distinct functions rather than one name on two lines.
+#if defined(BROMATH_SIMD_AVX2)
+    #define BROMATH_SIMD_ABI_NS simd_avx2
+#elif defined(BROMATH_SIMD_SSE2)
+    #define BROMATH_SIMD_ABI_NS simd_sse2
+#elif defined(BROMATH_SIMD_NEON)
+    #define BROMATH_SIMD_ABI_NS simd_neon
+#else
+    #define BROMATH_SIMD_ABI_NS simd_scalar
+#endif
+
 namespace bromath {
+inline namespace BROMATH_SIMD_ABI_NS {
 
 // 4-wide float SIMD vector wrapper.
 struct Simd4f {
@@ -397,4 +413,5 @@ inline void simdFindWithinRadius(const Vec3* pts, size_t count, Vec3 center, flo
     }
 }
 
+} // inline namespace BROMATH_SIMD_ABI_NS
 } // namespace bromath
