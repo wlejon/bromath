@@ -4,10 +4,18 @@
 [![CodeQL](https://github.com/wlejon/bromath/actions/workflows/codeql.yml/badge.svg)](https://github.com/wlejon/bromath/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Shared math primitives for the bro stack — used transitively by most
-siblings (bro, bromesh, brogameagent, broaudio, broflora, brotensor,
-brolm, brodiffusion, broimage, brosoundml, brovisionml). Header-only,
-C++20, no third-party dependencies.
+Shared math primitives for the bro stack. Header-only, C++20, no
+third-party dependencies.
+
+bromath is the bottom of the [bro ecosystem](https://github.com/wlejon/bro/blob/main/docs/ecosystem.md):
+it depends on nothing, and these repos build against it directly: bro,
+broaudio, bromesh, broflora, brogameagent, broimage, brolm, brodiffusion,
+brosoundml, brovisionml, bromux and brothumb. Others (brokit, through
+broimage) get it transitively. It has no JavaScript binding of its own; bro
+exposes the parts apps need under `bro.math`.
+
+Being header-only, it runs wherever a C++20 compiler does. `simd.h` uses
+SSE2/AVX2 on x86-64 and NEON on AArch64, with a scalar path everywhere else.
 
 ## Scope
 
@@ -31,6 +39,8 @@ brotensor, DSP in broaudio, mesh operations in bromesh.
 | `frustum.h` | Frustum (six planes from VP matrix via Gribb-Hartmann) + ffromViewProj, fcontains, fintersects (point/AABB/sphere culling) |
 | `color.h` | Color (linear RGBA float), Color8 (sRGB byte), cfromHSV, cfromHex, cfromColor8, ctoColor8, clerp, csrgbToLinear, clinearToSrgb |
 | `curves.h` | ccubicEase (CSS-style), cbezier, cbezierTangent, chermite, ccatmullRom (centripetal) |
+| `easing.h` | Penner easing set: easeLinear and the In/Out/InOut variants of Quad, Cubic, Quart, Quint, Sine, Expo, Circ, Back, Elastic, Bounce |
+| `simd.h` | Simd4f (SSE2/AVX2, NEON, scalar fallback; `BROMATH_SIMD_FORCE_SCALAR` forces scalar) and batch Vec3 kernels: batchAdd/Sub/Scale/MulAdd/Lerp/Dot/Dist2/Normalize/Min/Max, batchTransformPoints/Vectors, batchSphereOverlap, batchAABBContains |
 | `rng.h` | splitmix64 + randFloat01, randSigned, randRange, randInt, randNormal, randGaussian2D, randInUnitDisc, randInUnitSphere, randOnUnitSphere |
 | `hash.h` | fnv1a32, hashU32, hashU64, hashCombine, cellHash, positionToCell |
 | `smoother.h` | One-pole parameter smoother (smootherReset, smootherTarget, smootherSetTime, smootherTick, smootherTickN) |
@@ -49,8 +59,9 @@ brotensor, DSP in broaudio, mesh operations in bromesh.
 - **Vec2 is XY**. Other conventions (XZ for top-down nav) stay local to
   the consuming library.
 - **Angles are radians** unless explicitly named otherwise.
-- Headers `#include` only `<cmath>`, `<cstdint>`, `<limits>`,
-  `<vector>`, and (spatial_hash only) `<unordered_map>` from the stdlib.
+- Headers `#include` only the C++ standard library (plus the platform
+  SIMD intrinsics headers in `simd.h`). `color.h`'s CSS colour parser is
+  the one user of `<string>` / `<string_view>`.
 
 ## Build
 
@@ -66,19 +77,28 @@ Coverage of `include/bromath/` is reported in each run's job summary (`-DBROMATH
 
 ## Consuming bromath
 
-Header-only INTERFACE library. From a sibling CMakeLists:
+Header-only INTERFACE library (`bromath`, alias `bromath::bromath`).
+Consumers resolve it the way every repo in the ecosystem resolves a
+sibling: an existing `bromath` target wins (a superbuild already added it),
+then a checkout beside the top-level project at `../bromath`, then the
+top-level project's `third_party/bromath` git submodule:
 
 ```cmake
-# Prefer standalone repo, fall back to submodule
-set(BROMATH_DIR "${CMAKE_SOURCE_DIR}/../bromath" CACHE PATH "")
-if(EXISTS "${BROMATH_DIR}/CMakeLists.txt")
-    add_subdirectory("${BROMATH_DIR}" "${CMAKE_BINARY_DIR}/bromath" EXCLUDE_FROM_ALL)
-else()
-    add_subdirectory(third_party/bromath EXCLUDE_FROM_ALL)
+set(BROMATH_DIR "${CMAKE_SOURCE_DIR}/../bromath" CACHE PATH "Standalone bromath checkout")
+if(NOT TARGET bromath)
+    if(EXISTS "${BROMATH_DIR}/CMakeLists.txt")
+        add_subdirectory("${BROMATH_DIR}" "${CMAKE_BINARY_DIR}/bromath" EXCLUDE_FROM_ALL)
+    else()
+        add_subdirectory("${CMAKE_SOURCE_DIR}/third_party/bromath"
+                         "${CMAKE_BINARY_DIR}/bromath" EXCLUDE_FROM_ALL)
+    endif()
 endif()
 
 target_link_libraries(your_target PUBLIC bromath::bromath)
 ```
+
+Tests are built only when bromath is the top-level project
+(`BROMATH_TESTS` defaults to `PROJECT_IS_TOP_LEVEL`).
 
 Then in code:
 
@@ -95,10 +115,10 @@ using bromath::vdot;
 
 The following intentionally live elsewhere:
 
-- **Tensor / NN math** — brotensor (unified Tensor type, CPU/CUDA/Metal ops)
+- **Tensor / NN math** — brotensor (unified Tensor type; CPU, CUDA, Metal and Vulkan ops)
 - **DSP** (biquad, FFT, polyBLEP, resampler) — broaudio
 - **Mesh operations** (CSG, remesh, simplify, raycast acceleration) — bromesh
-- **Procedural noise** (Simplex, FBm) — FastNoise2, vendored in bromesh
+- **Procedural noise** (Simplex, FBm) — FastNoise2, built by brokit and bro
 - **Steering / AI** (seek/arrive/flee/pursue, intercept solver) — brogameagent
 - **Spatial accel structures** (BVH) — bromesh
 
