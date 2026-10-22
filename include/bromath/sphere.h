@@ -16,10 +16,12 @@ struct Sphere {
 };
 
 inline constexpr bool scontains(const Sphere& s, Vec3 p) {
+    if (!(s.radius >= 0.0f)) return false;
     return vdist2(s.center, p) <= s.radius * s.radius;
 }
 
 inline constexpr bool sintersects(const Sphere& a, const Sphere& b) {
+    if (!(a.radius >= 0.0f) || !(b.radius >= 0.0f)) return false;
     float r = a.radius + b.radius;
     return vdist2(a.center, b.center) <= r * r;
 }
@@ -27,6 +29,7 @@ inline constexpr bool sintersects(const Sphere& a, const Sphere& b) {
 // Volume of intersection of two spheres. Returns 0 when disjoint; returns
 // the smaller sphere's volume when one contains the other.
 inline float sintersectVolume(const Sphere& a, const Sphere& b) {
+    if (!(a.radius > 0.0f) || !(b.radius > 0.0f)) return 0.0f;
     float d = vdist(a.center, b.center);
     if (d >= a.radius + b.radius) return 0.0f;
     if (d + min(a.radius, b.radius) <= max(a.radius, b.radius)) {

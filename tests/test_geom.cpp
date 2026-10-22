@@ -153,3 +153,18 @@ TEST(aabb_transform_empty) {
     AABB3 b = atransform(AABB3{{-1, -1, -1}, {1, 1, 1}}, mtranslate(Vec3{1, 2, 3}));
     ASSERT(nearly(b.min.x, 0.0f) && nearly(b.max.z, 4.0f), "non-empty box still transforms");
 }
+
+TEST(ray_empty_aabb_and_negative_sphere_radius) {
+    Ray r{Vec3{-5, -5, -5}, Vec3{1, 1, 1}};
+    ASSERT(!rIntersectAABB(r, aempty3()).hit, "ray misses aempty3()");
+    AABB3 inverted{{1, 1, 1}, {-1, -1, -1}};
+    ASSERT(!rIntersectAABB(r, inverted).hit, "ray misses inverted AABB");
+
+    Sphere neg{{0, 0, 0}, -2.0f};
+    Sphere pos{{0, 0, 0}, 2.0f};
+    ASSERT(!scontains(neg, Vec3{0, 0, 0}), "negative-radius sphere contains nothing");
+    ASSERT(!sintersects(neg, pos), "negative-radius sphere does not intersect");
+    ASSERT(sintersectVolume(neg, pos) == 0.0f, "negative-radius sphere has 0 intersection volume");
+    ASSERT(!rIntersectSphere(Ray{{0, 0, -5}, {0, 0, 1}}, neg).hit,
+           "ray misses negative-radius sphere");
+}

@@ -101,3 +101,35 @@ TEST(quat_euler_convention_and_pole) {
         ASSERT(rotatesSame(qfromEuler(pe), q), "pole: qtoEuler round-trips the rotation");
     }
 }
+
+TEST(quat_fromTo_non_unit_and_zero) {
+    // Non-unit inputs (length > 1) at 135 deg previously made 1 + d < 0 -> NaN.
+    Vec3 from{10.0f, 0.0f, 0.0f};
+    Vec3 to{-10.0f, 10.0f, 0.0f};
+    Quat q = qfromTo(from, to);
+    ASSERT(!std::isnan(q.x) && !std::isnan(q.y) && !std::isnan(q.z) && !std::isnan(q.w),
+           "qfromTo non-unit finite");
+    ASSERT(nearly(qlen(q), 1.0f, 1e-4f), "qfromTo non-unit returns unit quaternion");
+    Vec3 r = qrotate(q, vnorm(from));
+    Vec3 expected = vnorm(to);
+    ASSERT(nearly(r.x, expected.x, 1e-4f) && nearly(r.y, expected.y, 1e-4f) &&
+               nearly(r.z, expected.z, 1e-4f),
+           "qfromTo non-unit rotates from direction to to direction");
+
+    // Zero inputs return identity.
+    Quat qz1 = qfromTo(Vec3{0, 0, 0}, Vec3{1, 0, 0});
+    Quat qz2 = qfromTo(Vec3{1, 0, 0}, Vec3{0, 0, 0});
+    ASSERT(qz1.x == 0 && qz1.y == 0 && qz1.z == 0 && qz1.w == 1, "qfromTo zero from -> identity");
+    ASSERT(qz2.x == 0 && qz2.y == 0 && qz2.z == 0 && qz2.w == 1, "qfromTo zero to -> identity");
+}
+
+TEST(quat_inverse_non_unit_and_zero) {
+    Quat q{2.0f, -4.0f, 6.0f, 8.0f};
+    Quat qi = qinverse(q);
+    Quat prod = qmul(q, qi);
+    ASSERT(nearly(prod.x, 0.0f, 1e-5f) && nearly(prod.y, 0.0f, 1e-5f) &&
+               nearly(prod.z, 0.0f, 1e-5f) && nearly(prod.w, 1.0f, 1e-5f),
+           "non-unit q * qinverse(q) == identity");
+    Quat qz = qinverse(Quat{0, 0, 0, 0});
+    ASSERT(qz.x == 0 && qz.y == 0 && qz.z == 0 && qz.w == 1, "zero qinverse -> identity");
+}

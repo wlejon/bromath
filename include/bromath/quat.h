@@ -33,8 +33,13 @@ inline Quat qnorm(Quat q) {
 }
 
 inline constexpr Quat qconjugate(Quat q) { return {-q.x, -q.y, -q.z, q.w}; }
-// Inverse of a unit quaternion is its conjugate.
-inline constexpr Quat qinverse(Quat q)   { return qconjugate(q); }
+// Inverse of a quaternion: conjugate(q) / |q|^2 (identity if degenerate).
+inline constexpr Quat qinverse(Quat q) {
+    float l2 = qlen2(q);
+    if (!(l2 >= 1e-24f)) return qidentity();
+    float inv = 1.0f / l2;
+    return {-q.x * inv, -q.y * inv, -q.z * inv, q.w * inv};
+}
 
 inline constexpr Quat qmul(Quat a, Quat b) {
     return {
@@ -63,8 +68,13 @@ inline Quat qaxisAngle(Vec3 axis, float angleRad) {
     return {a.x * s, a.y * s, a.z * s, std::cos(h)};
 }
 
-// Shortest-arc quaternion that rotates unit vector `from` to unit vector `to`.
+// Shortest-arc quaternion that rotates vector `from` to vector `to`.
 inline Quat qfromTo(Vec3 from, Vec3 to) {
+    float f2 = vlen2(from);
+    float t2 = vlen2(to);
+    if (!(f2 >= 1e-24f) || !(t2 >= 1e-24f)) return qidentity();
+    from = from * (1.0f / std::sqrt(f2));
+    to   = to   * (1.0f / std::sqrt(t2));
     float d = vdot(from, to);
     if (d > 0.999999f) return qidentity();
     if (d < -0.999999f) {
@@ -139,6 +149,7 @@ inline Quat qnlerp(Quat a, Quat b, float t) {
 inline Quat qslerp(Quat a, Quat b, float t) {
     float d = qdot(a, b);
     if (d < 0.0f) { b = {-b.x, -b.y, -b.z, -b.w}; d = -d; }
+    d = clamp(d, -1.0f, 1.0f);
     if (d > 0.9995f) return qnlerp(a, b, t);
     float theta0 = std::acos(d);
     float theta  = theta0 * t;

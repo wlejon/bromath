@@ -49,7 +49,8 @@ inline Vec3 ttransformPoint(const Transform& t, Vec3 p) {
 }
 
 inline Vec3 ttransformDir(const Transform& t, Vec3 d) {
-    return qrotate(t.rotation, d);
+    Vec3 scaled = { d.x * t.scale.x, d.y * t.scale.y, d.z * t.scale.z };
+    return qrotate(t.rotation, scaled);
 }
 
 } // namespace bromath

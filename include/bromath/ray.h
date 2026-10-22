@@ -36,6 +36,7 @@ inline constexpr Vec3 rat(const Ray& r, float t) {
 // normal; from inside, the exit point with the exited face's outward normal.
 // A zero direction hits nothing.
 inline RayHit rIntersectAABB(const Ray& r, const AABB3& a) {
+    if (aisEmpty(a)) return {};
     float tmin = -std::numeric_limits<float>::infinity();
     float tmax =  std::numeric_limits<float>::infinity();
     const float* o = &r.origin.x;
@@ -73,6 +74,7 @@ inline RayHit rIntersectAABB(const Ray& r, const AABB3& a) {
 
 // Quadratic solution. Returns nearest non-negative t.
 inline RayHit rIntersectSphere(const Ray& r, const Sphere& s) {
+    if (!(s.radius >= 0.0f)) return {};
     Vec3 oc = r.origin - s.center;
     float a = vdot(r.direction, r.direction);
     if (!(a > 1e-30f)) return {};  // zero (or NaN) direction

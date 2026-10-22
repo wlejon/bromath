@@ -178,13 +178,45 @@ inline void mdecompose(const Mat4& m, Vec3& t, Quat& r, Vec3& s) {
     Vec3 c1{ m.at(0,1), m.at(1,1), m.at(2,1) };
     Vec3 c2{ m.at(0,2), m.at(1,2), m.at(2,2) };
     s = { vlen(c0), vlen(c1), vlen(c2) };
-    if (vdot(vcross(c0, c1), c2) < 0.0f) {
+    const bool vx = s.x > 1e-20f;
+    const bool vy = s.y > 1e-20f;
+    const bool vz = s.z > 1e-20f;
+    if (!vx && !vy && !vz) {
+        s = {0, 0, 0};
+        r = qidentity();
+        return;
+    }
+    if (vx && vy && vz && vdot(vcross(c0, c1), c2) < 0.0f) {
         s.x = -s.x;
         c0 = -c0;
     }
-    if (std::fabs(s.x) > 1e-20f) c0 = c0 / std::fabs(s.x);
-    if (s.y > 1e-20f) c1 = c1 / s.y;
-    if (s.z > 1e-20f) c2 = c2 / s.z;
+    if (vx) c0 = c0 / std::fabs(s.x); else s.x = 0.0f;
+    if (vy) c1 = c1 / s.y;            else s.y = 0.0f;
+    if (vz) c2 = c2 / s.z;            else s.z = 0.0f;
+    if (!vx || !vy || !vz) {
+        if (vx && vy) {
+            c2 = vcross(c0, c1);
+            if (vlen2(c2) > 1e-12f) { c2 = vnorm(c2); c1 = vnorm(vcross(c2, c0)); }
+            else { c1 = vperpendicular(c0); c2 = vnorm(vcross(c0, c1)); }
+        } else if (vy && vz) {
+            c0 = vcross(c1, c2);
+            if (vlen2(c0) > 1e-12f) { c0 = vnorm(c0); c2 = vnorm(vcross(c0, c1)); }
+            else { c2 = vperpendicular(c1); c0 = vnorm(vcross(c1, c2)); }
+        } else if (vz && vx) {
+            c1 = vcross(c2, c0);
+            if (vlen2(c1) > 1e-12f) { c1 = vnorm(c1); c0 = vnorm(vcross(c1, c2)); }
+            else { c0 = vperpendicular(c2); c1 = vnorm(vcross(c2, c0)); }
+        } else if (vx) {
+            c1 = vperpendicular(c0);
+            c2 = vnorm(vcross(c0, c1));
+        } else if (vy) {
+            c2 = vperpendicular(c1);
+            c0 = vnorm(vcross(c1, c2));
+        } else {
+            c0 = vperpendicular(c2);
+            c1 = vnorm(vcross(c2, c0));
+        }
+    }
     // Build a quaternion from the orthonormal basis (Shepperd's method).
     float tr = c0.x + c1.y + c2.z;
     if (tr > 0.0f) {
@@ -212,6 +244,7 @@ inline void mdecompose(const Mat4& m, Vec3& t, Quat& r, Vec3& s) {
         r.y = (c2.y + c1.z) / ss;
         r.z = 0.25f * ss;
     }
+    r = qnorm(r);
 }
 
 // Right-handed view matrix looking from `eye` toward `center`, with `up`

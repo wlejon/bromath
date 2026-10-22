@@ -209,3 +209,26 @@ TEST(mat_look_at_parallel_up) {
     ASSERT(nearly(vlen(Vec3{z.at(0, 0), z.at(0, 1), z.at(0, 2)}), 1.0f, 1e-4f),
            "look-at with a zero up still has a right vector");
 }
+
+TEST(mat_decompose_zero_scale_and_transform_dir) {
+    Quat q = qnorm(Quat{0.3f, -0.4f, 0.5f, 0.7f});
+    for (Vec3 s : {Vec3{0, 0, 0}, Vec3{0, 2, 3}, Vec3{2, 0, 3}, Vec3{2, 3, 0},
+                   Vec3{2, 0, 0}, Vec3{0, 2, 0}, Vec3{0, 0, 2}}) {
+        Mat4 m = mfromTRS(Vec3{4, -5, 6}, q, s);
+        Vec3 t, sc;
+        Quat r;
+        mdecompose(m, t, r, sc);
+        ASSERT(nearly(qlen(r), 1.0f, 1e-4f), "zero-scale decompose produces unit quaternion");
+        ASSERT(matNear(mfromTRS(t, r, sc), m, 1e-4f), "zero-scale TRS round-trips");
+    }
+
+    Transform tr;
+    tr.position = {10, 20, 30};
+    tr.rotation = q;
+    tr.scale = {2.0f, -3.0f, 0.5f};
+    Vec3 d{1.5f, -0.5f, 2.0f};
+    Vec3 td = ttransformDir(tr, d);
+    Vec3 md = mtransformDir(ttoMat4(tr), d);
+    ASSERT(nearly(td.x, md.x, 1e-4f) && nearly(td.y, md.y, 1e-4f) && nearly(td.z, md.z, 1e-4f),
+           "ttransformDir matches mtransformDir(ttoMat4(t), d)");
+}
